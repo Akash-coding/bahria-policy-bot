@@ -1,0 +1,30 @@
+SAMPLE DOCUMENT FOR LOCAL TESTING
+This file is a demonstration policy used to test the Bahria University Policy Bot.
+Replace it with the official Semester Freeze Policy before production use.
+
+BAHRIA UNIVERSITY — SEMESTER FREEZE POLICY
+Version 1.0 | Academic Policies
+
+1. Purpose
+A semester freeze allows a student to pause studies for one regular semester without being treated as withdrawn from the university.
+
+2. Eligibility and Requirements
+2.1 A student may freeze a maximum of two semesters during an undergraduate degree, and one semester during a graduate degree, unless the Academic Council grants a special exception.
+2.2 The student must have completed at least one regular semester with a CGPA of 2.00 (undergraduate) or 2.50 (graduate).
+2.3 First-semester students may freeze only for documented medical or force-majeure reasons approved by the Director Campus.
+2.4 Freeze applications must be submitted no later than 15 calendar days after the start of classes. Applications after this date are treated as withdrawal and follow the Fee Refund Policy.
+
+3. Procedure
+3.1 The student submits the Semester Freeze Form to the Academic Office with:
+    a) written justification
+    b) parent/guardian consent for students under 21
+    c) clearance from Accounts, Library, and Student Affairs
+3.2 The Head of Department recommends the case. The Director Campus grants final approval.
+3.3 A freeze fee, as notified in the fee structure for that academic year, is payable if the freeze is approved after fee submission.
+
+4. Return from Freeze
+4.1 The student must register in the immediate next regular semester. Failure to register without an approved extension is treated as withdrawal.
+4.2 Degree duration limits continue to apply. Frozen semesters count toward the maximum allowed duration unless waived in writing.
+
+5. Transcript Notation
+The transcript shall show "Semester Frozen" for the relevant term. No courses may be attended or examined during a frozen semester.

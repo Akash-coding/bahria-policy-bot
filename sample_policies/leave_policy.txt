@@ -1,0 +1,28 @@
+SAMPLE DOCUMENT FOR LOCAL TESTING
+This file is a demonstration policy used to test the Bahria University Policy Bot.
+Replace it with the official Student Leave Policy before production use.
+
+BAHRIA UNIVERSITY — STUDENT LEAVE POLICY
+Version 1.0 | Student Affairs
+
+1. Types of Leave
+1.1 Short leave: absence of up to 7 consecutive calendar days during a semester.
+1.2 Medical leave: absence supported by a medical certificate.
+1.3 Emergency leave: sudden family or personal emergency, subject to verification.
+
+2. How Many Leaves a Student Can Take
+2.1 A student may take a maximum of 10 working days of short leave in a regular semester, excluding official university holidays.
+2.2 Short leave does not waive the 75% attendance requirement. Leave approved under this policy still counts toward attendance calculations unless the absence is classified as official university duty.
+2.3 Medical leave beyond 10 working days requires recommendation of the Head of Department and approval of the Director Campus.
+
+3. Application Procedure
+3.1 Leave applications must be submitted through the student portal or in writing to the class advisor at least 2 working days in advance, except in emergencies.
+3.2 Medical certificates must be submitted within 7 working days of returning to class.
+3.3 Leave exceeding 15 consecutive days may require a semester freeze instead of ordinary leave. See the Semester Freeze Policy.
+
+4. Unauthorized Absence
+4.1 Absence without an approved leave application may result in disciplinary action under Student Affairs regulations.
+4.2 Four consecutive unauthorized absences in a course shall be reported to the Head of Department.
+
+5. Contact
+Directorate of Student Affairs, Bahria University.

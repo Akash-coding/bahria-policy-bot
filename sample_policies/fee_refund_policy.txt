@@ -1,0 +1,32 @@
+SAMPLE DOCUMENT FOR LOCAL TESTING
+This file is a demonstration policy used to test the Bahria University Policy Bot.
+Replace it with the official Fee Refund Policy before production use.
+
+BAHRIA UNIVERSITY — FEE REFUND POLICY
+Version 1.0 | Finance Policies
+
+1. Scope
+This policy applies to tuition fee refunds for enrolled students who withdraw, freeze a semester, or are found ineligible after fee payment.
+
+2. Refund Schedule for Voluntary Withdrawal
+Refunds of tuition fee are calculated from the official start date of classes:
+2.1 Withdrawal before the start of classes: 100% tuition fee refund, minus a processing charge of PKR 5,000.
+2.2 Withdrawal within the first 7 calendar days of classes: 75% tuition fee refund.
+2.3 Withdrawal from day 8 to day 15: 50% tuition fee refund.
+2.4 Withdrawal after day 15: no tuition fee refund.
+
+3. Non-Refundable Charges
+3.1 Admission fee, registration fee, and security deposit (if already adjusted) are not refundable except where the university is unable to offer the admitted program.
+3.2 Hostel and transport fees follow the separate Hostel/Transport refund schedule issued by Administration.
+
+4. Semester Freeze
+4.1 If a semester freeze is approved before the start of classes, tuition fee may be transferred to the next registered semester.
+4.2 If a freeze is approved after classes have started, the refund schedule in Section 2 applies to the unused portion. See the Semester Freeze Policy.
+
+5. Procedure
+5.1 The student submits a refund request on the prescribed form to the Accounts Office with clearance from the library, laboratory, and student affairs.
+5.2 Approved refunds are processed within 30 working days by bank transfer to the student's or parent's nominated account.
+5.3 Incomplete clearance documents delay the refund until deficiencies are removed.
+
+6. Contact
+Accounts Office / Directorate of Finance of the concerned campus.

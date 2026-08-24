@@ -1,0 +1,30 @@
+SAMPLE DOCUMENT FOR LOCAL TESTING
+This file is a demonstration policy used to test the Bahria University Policy Bot.
+Replace it with the official Academic Probation Policy before production use.
+
+BAHRIA UNIVERSITY — ACADEMIC PROBATION POLICY
+Version 1.0 | Academic Policies
+
+1. Purpose
+This policy describes when a student is placed on academic probation and the procedure for returning to good academic standing.
+
+2. Good Academic Standing
+2.1 Undergraduate students must maintain a minimum cumulative GPA (CGPA) of 2.00 on a 4.00 scale.
+2.2 Graduate students must maintain a minimum CGPA of 2.50 on a 4.00 scale.
+
+3. Placement on Academic Probation
+3.1 A student whose CGPA falls below the minimum stated in Section 2 at the end of a regular semester is placed on academic probation.
+3.2 The Examination Department issues a written probation notice to the student and copies the Head of Department and the parents/guardian on record.
+
+4. Procedure During Probation
+4.1 Students on probation may register for a maximum of 12 credit hours in the following semester (undergraduate) or 9 credit hours (graduate), unless the Head of Department approves otherwise.
+4.2 The student must meet the assigned academic advisor at least twice during the probation semester.
+4.3 The student must achieve the minimum CGPA in Section 2 by the end of the probation semester, or show semester GPA of at least 2.50 (undergraduate) / 3.00 (graduate) with an improving CGPA.
+
+5. Dismissal After Unsuccessful Probation
+5.1 A student who remains below the minimum CGPA after two consecutive probation semesters shall be academically dismissed.
+5.2 A dismissed student may apply for re-admission after one regular semester, subject to the Admissions Policy and availability of seats.
+5.3 Re-admitted students enter as new students for CGPA calculation unless the Academic Council grants credit transfer.
+
+6. Appeal
+6.1 Appeals against probation or dismissal must be submitted to the Director Campus within 10 working days of the notice.

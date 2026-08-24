@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+node_modules
+frontend/dist
+**/__pycache__
+*.pyc
+.env
+data/chroma
+data/documents
+backend/db.sqlite3
+backend/staticfiles

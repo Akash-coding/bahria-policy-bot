@@ -1,0 +1,36 @@
+SAMPLE DOCUMENT FOR LOCAL TESTING
+This file is a demonstration policy used to test the Bahria University Policy Bot.
+Replace it with the official Examination Policy before production use.
+
+BAHRIA UNIVERSITY — EXAMINATION POLICY
+Version 1.0 | Examination Policies
+
+1. Examination Structure
+1.1 Each credit course is assessed through sessional work (quizzes, assignments, projects), a mid-term examination, and a final examination.
+1.2 Unless a course outline states otherwise, the typical weightage is:
+    - Sessional work: 30%
+    - Mid-term examination: 20%
+    - Final examination: 50%
+1.3 The passing mark in a course is 50% overall. Failure to appear in the final examination without an approved reason results in an "F" grade.
+
+2. Eligibility
+2.1 A student must be registered in the course, have paid the applicable dues, and meet the attendance requirement in the Attendance Policy.
+2.2 Students on disciplinary suspension are not permitted to sit examinations during the suspension period.
+
+3. Conduct of Examinations
+3.1 Students must bring their university identity card and admit slip.
+3.2 Mobile phones, smart watches, and unauthorized notes are prohibited in the examination hall.
+3.3 Unfair means (cheating, impersonation, or possession of unauthorized material) shall result in paper cancellation and may lead to rustication as per the Unfair Means Committee decision.
+
+4. Mid-term and Final Schedules
+4.1 Mid-term examinations are normally held in week 8 or 9 of a regular semester.
+4.2 Final examinations are held after the 16th teaching week according to the date sheet issued by the Examination Department.
+4.3 Clash of papers must be reported to the Examination Department within 48 hours of the date sheet being published.
+
+5. Make-up and Rechecking
+5.1 A make-up mid-term may be allowed for hospitalization or the death of an immediate family member, with documents submitted within 5 working days.
+5.2 There is no make-up for a missed final examination except a genuine medical emergency approved by the Director Campus; in that case an "I" (Incomplete) may be awarded and must be converted within 4 weeks.
+5.3 Rechecking of a final paper is limited to totaling errors and unmarked questions. Applications must be filed within 10 working days of result declaration with the notified rechecking fee.
+
+6. Result Declaration
+Results are published on the student portal. Grade changes after declaration require approval of the Board of Examiners.

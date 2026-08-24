@@ -1,0 +1,31 @@
+SAMPLE DOCUMENT FOR LOCAL TESTING
+This file is a demonstration policy used to test the Bahria University Policy Bot.
+Replace it with the official Attendance Policy before production use.
+
+BAHRIA UNIVERSITY — ATTENDANCE POLICY
+Version 1.0 | Academic Policies
+
+1. Purpose
+This policy sets the minimum class attendance requirements for undergraduate and graduate students.
+
+2. Minimum Attendance
+2.1 Students must maintain at least 75% attendance in each registered course to be eligible to sit for the final examination.
+2.2 Students whose attendance falls below 75% in a course shall be awarded a grade of "W" (Withdrawn) or be barred from the final examination, as notified by the concerned campus.
+2.3 Laboratories, studios, and clinical courses may require a higher attendance threshold of 80% where specified in the course outline.
+
+3. Recording of Attendance
+3.1 Attendance is marked by the course instructor in each scheduled lecture, lab, or tutorial.
+3.2 Late arrival of more than 15 minutes may be recorded as absent at the instructor's discretion.
+3.3 Students are responsible for checking their attendance record on the student portal during the semester.
+
+4. Medical and Official Absences
+4.1 Absences supported by a medical certificate from a registered medical practitioner, submitted within 7 working days, may be considered by the Head of Department.
+4.2 Official university representation (sports, competitions, or assigned duties) may be treated as present if approved in writing by the Directorate of Student Affairs before the event.
+
+5. Warning and Shortfall
+5.1 A first warning is issued when attendance falls below 80%.
+5.2 A final warning is issued when attendance falls below 75%.
+5.3 No re-sit or special examination is granted solely because a student was barred for short attendance.
+
+6. Contact
+Questions about this policy may be directed to the Academic Office of the concerned campus.
