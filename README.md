@@ -2,7 +2,7 @@
 
 A private, local **RAG (Retrieval-Augmented Generation)** assistant for Bahria University policies.
 
-Users ask policy questions in a chat UI. Answers are generated only from uploaded official documents (PDF, DOCX, TXT). The large language model runs on **Ollama** with **MedGemma 1.5 4B**. Documents never leave the local server.
+Users ask policy questions in a chat UI. Answers are generated only from uploaded official documents (PDF, DOCX, TXT). The large language model runs on **Ollama** with **Gemma 3 4B**. Documents never leave the local server.
 
 If a question is not covered by the knowledge base, the bot replies:
 
@@ -15,7 +15,7 @@ User question
     → embed query (local)
     → local vector similarity search
     → relevant policy chunks (threshold filtered)
-    → Ollama + MedGemma 1.5 4B
+    → Ollama + Gemma 3 4B
     → answer + document/page citations
 ```
 
@@ -27,7 +27,7 @@ User question
 - Optional: PostgreSQL 15+ (SQLite is the default for development)
 - Optional: Docker Desktop
 
-RAM: 8 GB minimum; 16 GB recommended for MedGemma 1.5 4B.
+RAM: 8 GB minimum; 16 GB recommended for Gemma 3 4B.
 
 ## 2. Python setup
 
@@ -66,24 +66,18 @@ ollama --version
 curl http://localhost:11434/api/tags
 ```
 
-## 4. MedGemma model installation
+## 4. Gemma 3 model installation
 
-Pull the official 4B MedGemma 1.5 tag used by this project:
-
-```bash
-ollama pull medgemma1.5:4b
-```
-
-Equivalent names that also work if you set `OLLAMA_MODEL` accordingly:
+Pull the official 4B Gemma 3 tag used by this project:
 
 ```bash
-ollama pull medgemma1.5
+ollama pull gemma3:4b
 ```
 
 Smoke test:
 
 ```bash
-ollama run medgemma1.5:4b "Reply with the word ready."
+ollama run gemma3:4b "Reply with the word ready."
 ```
 
 ## 5. Embedding model setup
@@ -119,7 +113,7 @@ Copy `.env.example` to `.env` and edit secrets. Important keys:
 | `DJANGO_DEBUG` | Debug mode | `true` |
 | `DATABASE_ENGINE` | `sqlite` or `postgres` | `sqlite` |
 | `OLLAMA_BASE_URL` | Local Ollama HTTP API | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Chat model | `medgemma1.5:4b` |
+| `OLLAMA_MODEL` | Chat model | `gemma3:4b` |
 | `EMBEDDING_PROVIDER` | `ollama`, `sentence-transformers`, or `lexical` | `ollama` |
 | `EMBEDDING_MODEL` | Embedding model name | `nomic-embed-text` |
 | `VECTOR_DB_PATH` | Local vector index directory | `./data/chroma` |
@@ -234,7 +228,7 @@ Each answer shows **sources** (document name, page when available, relevance). F
 
 Questions outside the knowledge base should return the not-found sentence, not a guessed policy.
 
-Backend tests (no GPU / no live MedGemma required):
+Backend tests (no GPU / no live Gemma required):
 
 ```powershell
 cd backend
