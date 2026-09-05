@@ -7,7 +7,8 @@ from django.db.models import Count
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes, renderer_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, renderer_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
@@ -29,6 +30,11 @@ from .serializers import (
 logger = logging.getLogger("chat")
 
 ANON_COOKIE = "bahria_chat_key"
+
+
+class CsrfExemptSessionAuthentication(SessionAuthentication):
+    def enforce_csrf(self, request):
+        return
 
 
 def _client_ip(request) -> str | None:
@@ -151,6 +157,7 @@ def _save_assistant(session: ChatSession, result: dict) -> ChatMessage:
 
 
 @api_view(["POST"])
+@authentication_classes([CsrfExemptSessionAuthentication])
 @permission_classes([AllowAny])
 def chat_ask(request):
     session, question, history = _begin_turn(request)
@@ -187,6 +194,7 @@ def chat_ask(request):
 
 
 @api_view(["POST"])
+@authentication_classes([CsrfExemptSessionAuthentication])
 @permission_classes([AllowAny])
 @renderer_classes([ServerSentEventRenderer, JSONRenderer])
 def chat_ask_stream(request):

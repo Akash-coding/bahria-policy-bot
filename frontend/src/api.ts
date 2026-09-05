@@ -183,7 +183,7 @@ async function askStream(
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
   const token = await ensureCsrf();
-  const response = await fetch("/api/chat/stream/", {
+  const response = await fetch("/query", {
     method: "POST",
     credentials: "include",
     headers: {
