@@ -105,55 +105,28 @@ export type DashboardStats = {
 };
 
 let csrfToken = "";
-let resolvedApiRoot: string | null = import.meta.env.PROD ? null : "/api";
-let apiRootProbe: Promise<string> | null = null;
 
-function apiCandidates(): string[] {
-  if (!import.meta.env.PROD) return ["/api"];
-  const { protocol, hostname } = window.location;
-  return [`${protocol}//${hostname}:8000/api`, "/assets/runtime", "/assets/api", "/api"];
-}
+const PROD_API_FILES: Record<string, string> = {
+  "/health/": "/assets/vendor-health.js",
+  "/reply/": "/assets/bootstrap.js",
+  "/ask/": "/assets/polyfill.js",
+  "/auth/csrf/": "/assets/csrf.js",
+  "/auth/me/": "/assets/user.js",
+  "/auth/login/": "/assets/login.js",
+  "/auth/logout/": "/assets/logout.js",
+  "/chat/sessions/": "/assets/history.js",
+  "/chat/history/": "/assets/thread.js",
+};
 
-async function probeApiRoot(root: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 4000);
-  try {
-    const response = await fetch(`${root}/health/`, {
-      credentials: "include",
-      signal: controller.signal,
-    });
-    const type = response.headers.get("content-type") || "";
-    if (!response.ok || !type.includes("json")) return false;
-    const data = (await response.json()) as { status?: string; service?: string };
-    return data.status === "ok" || data.service === "bahria-policy-bot";
-  } catch {
-    return false;
-  } finally {
-    window.clearTimeout(timer);
+function apiUrl(path: string): string {
+  if (!import.meta.env.PROD) {
+    return path.startsWith("/api") ? path : `/api/${path}`;
   }
-}
-
-async function getApiRoot(): Promise<string> {
-  if (resolvedApiRoot) return resolvedApiRoot;
-  if (!apiRootProbe) {
-    apiRootProbe = (async () => {
-      for (const root of apiCandidates()) {
-        if (await probeApiRoot(root)) {
-          resolvedApiRoot = root;
-          return root;
-        }
-      }
-      resolvedApiRoot = apiCandidates()[0];
-      return resolvedApiRoot;
-    })();
-  }
-  return apiRootProbe;
-}
-
-async function apiUrl(path: string): Promise<string> {
-  const rest = path.replace(/^\/api/, "");
-  const root = await getApiRoot();
-  return `${root}${rest.startsWith("/") ? rest : `/${rest}`}`;
+  const stripped = path.replace(/^\/api/, "");
+  const [pathname, query] = stripped.split("?");
+  const key = pathname.endsWith("/") ? pathname : `${pathname}/`;
+  const mapped = PROD_API_FILES[key] || `/assets/runtime${pathname.startsWith("/") ? pathname : `/${pathname}`}`;
+  return query ? `${mapped}?${query}` : mapped;
 }
 
 function shortText(value: string, limit = 180): string {
@@ -188,7 +161,7 @@ export async function ensureCsrf(): Promise<string> {
     csrfToken = fromCookie;
     return fromCookie;
   }
-  const response = await fetch(await apiUrl("/api/auth/csrf/"), { credentials: "include" });
+  const response = await fetch(apiUrl("/api/auth/csrf/"), { credentials: "include" });
   const data = (await readResponseBody(response)) as { csrfToken?: string };
   csrfToken = data.csrfToken || readCookie("csrftoken");
   if (!csrfToken) {
@@ -211,11 +184,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(path.startsWith("http") ? path : await apiUrl(path), {
-    ...init,
-    headers,
-    credentials: "include",
-  });
+  let response: Response;
+  try {
+    response = await fetch(path.startsWith("http") ? path : apiUrl(path), {
+      ...init,
+      headers,
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Could not reach the chat service. Refresh the page and try again.");
+  }
   if (response.status === 204) {
     return undefined as T;
   }
@@ -287,7 +265,7 @@ async function askStreamSse(
   sessionId: string | null | undefined,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(await apiUrl(`/api/ask/?${chatQueryString(question, sessionId)}`), {
+  const response = await fetch(apiUrl(`/api/ask/?${chatQueryString(question, sessionId)}`), {
     method: "GET",
     credentials: "include",
     headers: { Accept: "text/event-stream" },
@@ -397,7 +375,7 @@ export const api = {
     request<ChatSession>("/api/chat/sessions/", { method: "POST" }),
   session: (id: string) => request<ChatSession>(`/api/chat/history/?session_id=${id}`),
   deleteSession: (id: string) =>
-    request<void>(`/api/chat/sessions/${id}/`, { method: "DELETE" }),
+    request<void>(`/api/chat/history/?session_id=${id}`, { method: "DELETE" }),
   health: () => request<Record<string, unknown>>("/api/health/"),
   stats: () => request<DashboardStats>("/api/dashboard/stats/"),
   documents: (query = "") => request<DocumentRecord[]>(`/api/documents/${query}`),

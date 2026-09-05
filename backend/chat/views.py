@@ -276,7 +276,7 @@ def session_detail(request, pk):
     return Response(ChatSessionDetailSerializer(session).data)
 
 
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 @permission_classes([AllowAny])
 def chat_history(request):
     session_id = request.query_params.get("session_id")
@@ -284,6 +284,9 @@ def chat_history(request):
         session = _visible_sessions(request).filter(id=session_id).first()
         if not session:
             return Response({"detail": "Conversation not found."}, status=status.HTTP_404_NOT_FOUND)
+        if request.method == "DELETE":
+            session.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(ChatSessionDetailSerializer(session).data)
     sessions = _visible_sessions(request)[:20]
     return Response(ChatSessionSerializer(sessions, many=True).data)
