@@ -109,8 +109,8 @@ def _visible_sessions(request):
     return ChatSession.objects.filter(anonymous_key=anon_key, user__isnull=True)
 
 
-def _begin_turn(request):
-    serializer = ChatAskSerializer(data=request.data)
+def _begin_turn(request, payload=None):
+    serializer = ChatAskSerializer(data=payload if payload is not None else request.data)
     serializer.is_valid(raise_exception=True)
     question = serializer.validated_data["question"].strip()
     session = _get_or_create_session(request, serializer.validated_data.get("session_id"))
@@ -193,12 +193,19 @@ def chat_ask(request):
     return _attach_anon_cookie(request, response, session)
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
 @authentication_classes([CsrfExemptSessionAuthentication])
 @permission_classes([AllowAny])
 @renderer_classes([ServerSentEventRenderer, JSONRenderer])
 def chat_ask_stream(request):
-    session, question, history = _begin_turn(request)
+    payload = request.data
+    if request.method == "GET":
+        payload = {
+            "question": request.query_params.get("question", ""),
+            "session_id": request.query_params.get("session_id") or None,
+        }
+    logger.info("Chat stream started (%s)", request.method)
+    session, question, history = _begin_turn(request, payload)
 
     def events():
         yield _sse({"type": "meta", "session_id": str(session.id), "status": "retrieving"})

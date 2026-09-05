@@ -183,17 +183,32 @@ async function askStream(
   sessionId: string | null | undefined,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const token = await ensureCsrf();
-  const response = await fetch("/query", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      "X-CSRFToken": token,
-    },
-    body: JSON.stringify({ question, session_id: sessionId || null }),
-  });
+  const params = new URLSearchParams();
+  params.set("question", question);
+  if (sessionId) params.set("session_id", sessionId);
+  const getUrl = `/query?${params.toString()}`;
+  const useGet = getUrl.length < 1800;
+
+  let response: Response;
+  if (useGet) {
+    response = await fetch(getUrl, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "text/event-stream" },
+    });
+  } else {
+    const token = await ensureCsrf();
+    response = await fetch("/query", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        "X-CSRFToken": token,
+      },
+      body: JSON.stringify({ question, session_id: sessionId || null }),
+    });
+  }
   if (!response.ok) {
     const data = await readResponseBody(response).catch((err) => ({
       detail: err instanceof Error ? err.message : "Request failed",

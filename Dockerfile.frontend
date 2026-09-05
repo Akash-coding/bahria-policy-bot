@@ -3,7 +3,8 @@ WORKDIR /app
 COPY frontend/package.json ./
 RUN npm install
 COPY frontend ./
-RUN npm run build
+ARG FRONTEND_BUILD=1
+RUN echo "$FRONTEND_BUILD" && npm run build
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf

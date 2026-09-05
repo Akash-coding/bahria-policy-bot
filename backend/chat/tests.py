@@ -146,6 +146,17 @@ class RagAndChatTests(TestCase):
         self.assertIn("Hello", body)
         self.assertIn("session_id", body)
 
+    def test_chat_stream_greeting_get(self):
+        response = self.client.get(
+            "/api/ask/",
+            {"question": "hello"},
+            HTTP_ACCEPT="text/event-stream",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = b"".join(response.streaming_content).decode()
+        self.assertIn('"type": "done"', body)
+        self.assertIn("Hello", body)
+
     def test_chat_stream_policy_answer(self):
         chunks = ["## Attendance\n\n", "1. **Required:** Students must maintain 75% attendance."]
         with patch("rag.qa.stream_generate", return_value=iter(chunks)):
