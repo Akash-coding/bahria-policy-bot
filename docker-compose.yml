@@ -26,7 +26,7 @@ services:
       start_period: 15s
 
   ollama-pull:
-    image: alpine:3.21
+    image: curlimages/curl:8.12.1
     depends_on:
       ollama:
         condition: service_healthy
@@ -34,8 +34,8 @@ services:
       OLLAMA_URL: http://ollama:11434
     volumes:
       - ./docker/pull-models.sh:/pull-models.sh:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command: "apk add --no-cache curl >/dev/null && sh /pull-models.sh"
+    user: "0"
+    entrypoint: ["/bin/sh", "/pull-models.sh"]
     restart: on-failure
 
   backend:
