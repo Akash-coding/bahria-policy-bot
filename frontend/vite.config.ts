@@ -12,6 +12,13 @@ export default defineConfig({
         timeout: 300000,
         proxyTimeout: 300000,
       },
+      "/assets/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000,
+        rewrite: (path) => path.replace(/^\/assets\/api/, "/api"),
+      },
       "/media": "http://127.0.0.1:8000",
       "/django-admin": "http://127.0.0.1:8000",
     },

@@ -106,6 +106,13 @@ export type DashboardStats = {
 
 let csrfToken = "";
 
+const API_ROOT = import.meta.env.PROD ? "/assets/api" : "/api";
+
+function apiUrl(path: string): string {
+  const rest = path.replace(/^\/api/, "");
+  return `${API_ROOT}${rest.startsWith("/") ? rest : `/${rest}`}`;
+}
+
 function shortText(value: string, limit = 180): string {
   const text = value.replace(/\s+/g, " ").trim();
   if (text.length <= limit) return text;
@@ -136,7 +143,7 @@ export async function ensureCsrf(): Promise<string> {
     csrfToken = fromCookie;
     return fromCookie;
   }
-  const response = await fetch("/api/auth/csrf/", { credentials: "include" });
+  const response = await fetch(apiUrl("/api/auth/csrf/"), { credentials: "include" });
   const data = (await readResponseBody(response)) as { csrfToken?: string };
   csrfToken = data.csrfToken || readCookie("csrftoken");
   if (!csrfToken) {
@@ -159,7 +166,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(path, {
+  const response = await fetch(path.startsWith("/api/") ? apiUrl(path) : path, {
     ...init,
     headers,
     credentials: "include",
@@ -195,7 +202,7 @@ async function askJson(
   found: boolean;
   message: ChatMessage;
 }> {
-  return request(`/api/reply/?${chatQueryString(question, sessionId)}`);
+  return request(apiUrl(`/api/reply/?${chatQueryString(question, sessionId)}`));
 }
 
 function emitDone(
@@ -235,7 +242,7 @@ async function askStreamSse(
   sessionId: string | null | undefined,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(`/api/ask/?${chatQueryString(question, sessionId)}`, {
+  const response = await fetch(apiUrl(`/api/ask/?${chatQueryString(question, sessionId)}`), {
     method: "GET",
     credentials: "include",
     headers: { Accept: "text/event-stream" },
