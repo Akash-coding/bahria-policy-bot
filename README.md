@@ -237,7 +237,7 @@ python manage.py test
 
 ## 13. Docker deployment
 
-Ollama should keep running on the host (or another local machine). Compose talks to it via `host.docker.internal`.
+Ollama runs **inside Compose** (`ollama` service). The first start pulls `gemma3:4b` and `nomic-embed-text` into a Docker volume. That download can take several minutes.
 
 ```powershell
 copy .env.example .env
