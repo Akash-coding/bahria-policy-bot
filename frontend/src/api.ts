@@ -105,12 +105,55 @@ export type DashboardStats = {
 };
 
 let csrfToken = "";
+let resolvedApiRoot: string | null = import.meta.env.PROD ? null : "/api";
+let apiRootProbe: Promise<string> | null = null;
 
-const API_ROOT = import.meta.env.PROD ? "/assets/api" : "/api";
+function apiCandidates(): string[] {
+  if (!import.meta.env.PROD) return ["/api"];
+  const { protocol, hostname } = window.location;
+  return [`${protocol}//${hostname}:8000/api`, "/assets/runtime", "/assets/api", "/api"];
+}
 
-function apiUrl(path: string): string {
+async function probeApiRoot(root: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(`${root}/health/`, {
+      credentials: "include",
+      signal: controller.signal,
+    });
+    const type = response.headers.get("content-type") || "";
+    if (!response.ok || !type.includes("json")) return false;
+    const data = (await response.json()) as { status?: string; service?: string };
+    return data.status === "ok" || data.service === "bahria-policy-bot";
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function getApiRoot(): Promise<string> {
+  if (resolvedApiRoot) return resolvedApiRoot;
+  if (!apiRootProbe) {
+    apiRootProbe = (async () => {
+      for (const root of apiCandidates()) {
+        if (await probeApiRoot(root)) {
+          resolvedApiRoot = root;
+          return root;
+        }
+      }
+      resolvedApiRoot = apiCandidates()[0];
+      return resolvedApiRoot;
+    })();
+  }
+  return apiRootProbe;
+}
+
+async function apiUrl(path: string): Promise<string> {
   const rest = path.replace(/^\/api/, "");
-  return `${API_ROOT}${rest.startsWith("/") ? rest : `/${rest}`}`;
+  const root = await getApiRoot();
+  return `${root}${rest.startsWith("/") ? rest : `/${rest}`}`;
 }
 
 function shortText(value: string, limit = 180): string {
@@ -127,7 +170,9 @@ async function readResponseBody(response: Response): Promise<unknown> {
     return JSON.parse(trimmed);
   } catch {
     throw new Error(
-      shortText(trimmed) || `Request failed (${response.status || "unknown"})`,
+      /sorry, you do not have permission/i.test(trimmed)
+        ? "The campus network blocked this chat request. Please try again."
+        : shortText(trimmed) || `Request failed (${response.status || "unknown"})`,
     );
   }
 }
@@ -143,7 +188,7 @@ export async function ensureCsrf(): Promise<string> {
     csrfToken = fromCookie;
     return fromCookie;
   }
-  const response = await fetch(apiUrl("/api/auth/csrf/"), { credentials: "include" });
+  const response = await fetch(await apiUrl("/api/auth/csrf/"), { credentials: "include" });
   const data = (await readResponseBody(response)) as { csrfToken?: string };
   csrfToken = data.csrfToken || readCookie("csrftoken");
   if (!csrfToken) {
@@ -166,7 +211,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(path.startsWith("/api/") ? apiUrl(path) : path, {
+  const response = await fetch(path.startsWith("http") ? path : await apiUrl(path), {
     ...init,
     headers,
     credentials: "include",
@@ -202,7 +247,7 @@ async function askJson(
   found: boolean;
   message: ChatMessage;
 }> {
-  return request(apiUrl(`/api/reply/?${chatQueryString(question, sessionId)}`));
+  return request(`/api/reply/?${chatQueryString(question, sessionId)}`);
 }
 
 function emitDone(
@@ -242,7 +287,7 @@ async function askStreamSse(
   sessionId: string | null | undefined,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(apiUrl(`/api/ask/?${chatQueryString(question, sessionId)}`), {
+  const response = await fetch(await apiUrl(`/api/ask/?${chatQueryString(question, sessionId)}`), {
     method: "GET",
     credentials: "include",
     headers: { Accept: "text/event-stream" },
