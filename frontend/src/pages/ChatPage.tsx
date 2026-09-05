@@ -83,7 +83,8 @@ export function ChatPage() {
 
   const loadSessions = async () => {
     try {
-      setSessions(await api.sessions());
+      const rows = await api.sessions();
+      setSessions(Array.isArray(rows) ? rows : []);
     } catch {
       setSessions([]);
     }
@@ -189,9 +190,10 @@ export function ChatPage() {
     navigate("/", { replace: true });
   };
 
+  const sessionList = Array.isArray(sessions) ? sessions : [];
   const activeTitle = useMemo(
-    () => sessions.find((item) => item.id === sessionId)?.title || "New chat",
-    [sessions, sessionId],
+    () => sessionList.find((item) => item.id === sessionId)?.title || "New chat",
+    [sessionList, sessionId],
   );
   const userInitial = (user?.username || "G").slice(0, 1).toUpperCase();
 
@@ -227,10 +229,10 @@ export function ChatPage() {
 
         <div className="sidebar-section-label">Recent chats</div>
         <nav className="session-list">
-          {sessions.length === 0 ? (
+          {sessionList.length === 0 ? (
             <p className="sidebar-empty">No conversations yet</p>
           ) : (
-            sessions.map((item) => (
+            sessionList.map((item) => (
               <button
                 key={item.id}
                 className={`session-item ${item.id === sessionId ? "active" : ""}`}

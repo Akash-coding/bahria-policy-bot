@@ -147,11 +147,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
-  const data = await response.json().catch(() => ({}));
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      response.ok ? "API did not return JSON." : `Request failed (${response.status})`,
+    );
+  }
+  const data = await response.json();
   if (!response.ok) {
     const detail =
-      data.detail ||
-      data.error ||
+      data?.detail ||
+      data?.error ||
       (typeof data === "object" ? JSON.stringify(data) : "Request failed");
     throw new Error(typeof detail === "string" ? detail : "Request failed");
   }
@@ -254,7 +260,12 @@ export const api = {
     sessionId: string | null | undefined,
     onEvent: (event: StreamEvent) => void,
   ) => askStream(question, sessionId, onEvent),
-  sessions: () => request<ChatSession[]>("/api/chat/sessions/"),
+  sessions: async () => {
+    const data = await request<ChatSession[] | { results?: ChatSession[] }>("/api/chat/sessions/");
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.results)) return data.results;
+    return [];
+  },
   createSession: () =>
     request<ChatSession>("/api/chat/sessions/", { method: "POST" }),
   session: (id: string) => request<ChatSession>(`/api/chat/history/?session_id=${id}`),
