@@ -41,6 +41,7 @@ export type StreamEvent =
       found: boolean;
       message: ChatMessage;
     }
+  | { type: "close" }
   | { type: "error"; detail: string };
 
 export type ChatSession = {
@@ -211,13 +212,11 @@ async function askStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let completed = false;
+  let lastDelta = "";
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop() || "";
+  const consume = (chunk: string) => {
+    const parts = chunk.split("\n\n");
+    const rest = parts.pop() || "";
     for (const part of parts) {
       const line = part
         .split("\n")
@@ -230,14 +229,45 @@ async function askStream(
       try {
         event = JSON.parse(payload) as StreamEvent;
       } catch {
-        throw new Error(shortText(payload) || "The answer stream was not valid JSON.");
+        continue;
       }
       if (event.type === "error") {
         throw new Error(event.detail || "Could not get an answer.");
       }
+      if (event.type === "delta") lastDelta = event.text;
+      if (event.type === "close") continue;
       onEvent(event);
       if (event.type === "done") completed = true;
     }
+    return rest;
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    buffer = consume(buffer);
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) consume(`${buffer}\n\n`);
+
+  if (!completed && lastDelta) {
+    onEvent({
+      type: "done",
+      session_id: sessionId || "",
+      answer: lastDelta,
+      sources: [],
+      found: true,
+      message: {
+        id: Date.now(),
+        role: "assistant",
+        content: lastDelta,
+        sources: [],
+        found: true,
+        created_at: new Date().toISOString(),
+      },
+    });
+    return;
   }
 
   if (!completed) {

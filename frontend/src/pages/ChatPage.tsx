@@ -151,7 +151,7 @@ export function ChatPage() {
       setMessages((current) => [...current, placeholder]);
 
       await api.askStream(trimmed, sessionId, (event) => {
-        if (event.type === "meta") setSessionId(event.session_id);
+        if (event.type === "meta" && event.session_id) setSessionId(event.session_id);
         if (event.type === "delta") {
           setMessages((current) =>
             current.map((item) =>
@@ -160,21 +160,48 @@ export function ChatPage() {
           );
         }
         if (event.type === "done") {
-          setSessionId(event.session_id);
+          if (event.session_id) setSessionId(event.session_id);
           setMessages((current) => {
             const without = current.filter(
               (item) => item.id !== optimistic.id && item.id !== streamId,
             );
-            return [...without, { ...optimistic, id: event.message.id - 1 }, event.message];
+            const userMessage = { ...optimistic, id: event.message?.id ? event.message.id - 1 : optimistic.id };
+            const assistantMessage = event.message || {
+              id: streamId,
+              role: "assistant" as const,
+              content: event.answer,
+              sources: event.sources || [],
+              found: event.found,
+              created_at: new Date().toISOString(),
+            };
+            return [...without, userMessage, assistantMessage];
           });
         }
       });
       await loadSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not get an answer.");
-      setMessages((current) =>
-        current.filter((item) => item.id !== optimistic.id && !item.streaming),
-      );
+      try {
+        const fallback = await api.ask(trimmed, sessionId);
+        setSessionId(fallback.session_id);
+        setMessages((current) => {
+          const without = current.filter((item) => item.id !== optimistic.id && !item.streaming);
+          return [
+            ...without,
+            { ...optimistic, id: fallback.message.id - 1 },
+            fallback.message,
+          ];
+        });
+        await loadSessions();
+      } catch {
+        setError(err instanceof Error ? err.message : "Could not get an answer.");
+        setMessages((current) =>
+          current.map((item) =>
+            item.streaming
+              ? { ...item, streaming: false, content: item.content || "The assistant could not finish that reply. Please try again." }
+              : item,
+          ),
+        );
+      }
     } finally {
       setBusy(false);
     }

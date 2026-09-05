@@ -77,7 +77,7 @@ def answer_question(question: str, history: list[dict[str, str]] | None = None) 
 
 
 def stream_answer_events(question: str, history: list[dict[str, str]] | None = None):
-    prepared = prepare_answer(question, history)
+    prepared = prepare_answer(question, (history or [])[-4:])
     if prepared["mode"] == "ready":
         yield {
             "type": "done",
@@ -90,8 +90,8 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
     yield {"type": "status", "status": "generating"}
     answer = ""
     last_visible = ""
+    raw = ""
     try:
-        raw = ""
         for chunk in stream_generate(prepared["system_prompt"], prepared["user_prompt"]):
             raw += chunk
             visible = _partial_visible(raw)
@@ -101,7 +101,7 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
         answer = sanitize_answer(raw) if raw.strip() else _extractive_answer(prepared["hits"])
     except OllamaError:
         logger.warning("Ollama unavailable during stream; returning extractive policy excerpts")
-        answer = _extractive_answer(prepared["hits"])
+        answer = sanitize_answer(raw) if raw.strip() else _extractive_answer(prepared["hits"])
 
     answer = _prefer_excerpts_if_refused(answer, prepared["hits"])
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()

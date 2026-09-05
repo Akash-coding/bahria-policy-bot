@@ -212,12 +212,13 @@ def chat_ask_stream(request):
                         "message": ChatMessageSerializer(assistant).data,
                     }
                 yield _sse(event)
+            yield _sse({"type": "close"})
         except Exception as exc:
             logger.exception("Streaming chat failed")
             yield _sse(
                 {
                     "type": "error",
-                    "detail": f"The policy assistant could not complete this request: {exc}",
+                    "detail": "The policy assistant could not complete this request. Please try again.",
                 }
             )
 

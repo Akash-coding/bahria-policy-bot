@@ -22,7 +22,7 @@ def _chat_payload(system_prompt: str, user_prompt: str, stream: bool) -> dict:
             {"role": "user", "content": user_prompt},
         ],
         "stream": stream,
-        "keep_alive": "60m",
+        "keep_alive": "24h",
         "options": {
             "temperature": settings.OLLAMA_TEMPERATURE,
             "num_predict": getattr(settings, "OLLAMA_NUM_PREDICT", 400),
@@ -85,12 +85,13 @@ def generate_answer(system_prompt: str, user_prompt: str) -> str:
 
 def stream_generate(system_prompt: str, user_prompt: str) -> Iterator[str]:
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    timeout = (15, settings.OLLAMA_TIMEOUT)
     try:
         with requests.post(
             url,
             json=_chat_payload(system_prompt, user_prompt, stream=True),
             stream=True,
-            timeout=settings.OLLAMA_TIMEOUT,
+            timeout=timeout,
         ) as response:
             response.raise_for_status()
             for line in response.iter_lines(decode_unicode=True):
@@ -110,6 +111,8 @@ def stream_generate(system_prompt: str, user_prompt: str) -> Iterator[str]:
                     yield content
                 if data.get("done"):
                     break
+    except requests.exceptions.ChunkedEncodingError as exc:
+        logger.warning("Ollama stream closed early: %s", exc)
     except requests.RequestException as exc:
         logger.exception("Ollama streaming failed")
         raise OllamaError(_ollama_unreachable(exc)) from exc
