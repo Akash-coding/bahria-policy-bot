@@ -178,49 +178,71 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+function chatQueryString(question: string, sessionId?: string | null): string {
+  const params = new URLSearchParams();
+  params.set("question", question);
+  if (sessionId) params.set("session_id", sessionId);
+  return params.toString();
+}
+
+async function askJson(
+  question: string,
+  sessionId?: string | null,
+): Promise<{
+  session_id: string;
+  answer: string;
+  sources: Source[];
+  found: boolean;
+  message: ChatMessage;
+}> {
+  return request(`/api/reply/?${chatQueryString(question, sessionId)}`);
+}
+
+function emitDone(
+  result: {
+    session_id: string;
+    answer: string;
+    sources: Source[];
+    found: boolean;
+    message: ChatMessage;
+  },
+  onEvent: (event: StreamEvent) => void,
+) {
+  onEvent({
+    type: "done",
+    session_id: result.session_id,
+    answer: result.answer,
+    sources: result.sources,
+    found: result.found,
+    message: result.message,
+  });
+}
+
 async function askStream(
   question: string,
   sessionId: string | null | undefined,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const params = new URLSearchParams();
-  params.set("question", question);
-  if (sessionId) params.set("session_id", sessionId);
-  const getUrl = `/query?${params.toString()}`;
-  const useGet = getUrl.length < 1800;
+  try {
+    await askStreamSse(question, sessionId, onEvent);
+  } catch {
+    emitDone(await askJson(question, sessionId), onEvent);
+  }
+}
 
-  let response: Response;
-  if (useGet) {
-    response = await fetch(getUrl, {
-      method: "GET",
-      credentials: "include",
-      headers: { Accept: "text/event-stream" },
-    });
-  } else {
-    const token = await ensureCsrf();
-    response = await fetch("/query", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        "X-CSRFToken": token,
-      },
-      body: JSON.stringify({ question, session_id: sessionId || null }),
-    });
-  }
-  if (!response.ok) {
-    const data = await readResponseBody(response).catch((err) => ({
-      detail: err instanceof Error ? err.message : "Request failed",
-    }));
-    const detail =
-      (data as { detail?: string }).detail ||
-      (data as { error?: string }).error ||
-      "Request failed";
-    throw new Error(typeof detail === "string" ? detail : "Request failed");
-  }
-  if (!response.body) {
-    throw new Error("Streaming is not supported in this browser.");
+async function askStreamSse(
+  question: string,
+  sessionId: string | null | undefined,
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  const response = await fetch(`/api/ask/?${chatQueryString(question, sessionId)}`, {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "text/event-stream" },
+  });
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok || contentType.includes("text/html") || !response.body) {
+    throw new Error("stream-unavailable");
   }
 
   const reader = response.body.getReader();
@@ -266,7 +288,8 @@ async function askStream(
   buffer += decoder.decode();
   if (buffer.trim()) consume(`${buffer}\n\n`);
 
-  if (!completed && lastDelta) {
+  if (completed) return;
+  if (lastDelta) {
     onEvent({
       type: "done",
       session_id: sessionId || "",
@@ -284,10 +307,7 @@ async function askStream(
     });
     return;
   }
-
-  if (!completed) {
-    throw new Error("The answer stream ended before the reply was complete.");
-  }
+  throw new Error("stream-unavailable");
 }
 
 export const api = {
@@ -309,17 +329,7 @@ export const api = {
       clearCsrfCache();
     }
   },
-  ask: (question: string, sessionId?: string | null) =>
-    request<{
-      session_id: string;
-      answer: string;
-      sources: Source[];
-      found: boolean;
-      message: ChatMessage;
-    }>("/api/chat/", {
-      method: "POST",
-      body: JSON.stringify({ question, session_id: sessionId || null }),
-    }),
+  ask: (question: string, sessionId?: string | null) => askJson(question, sessionId),
   askStream: (
     question: string,
     sessionId: string | null | undefined,

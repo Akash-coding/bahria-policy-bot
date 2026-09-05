@@ -76,7 +76,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        FRONTEND_BUILD: "20260905b"
+        FRONTEND_BUILD: "20260905c"
     depends_on:
       - backend
     ports:

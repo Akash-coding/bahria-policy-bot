@@ -156,11 +156,18 @@ def _save_assistant(session: ChatSession, result: dict) -> ChatMessage:
     return assistant
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
 @authentication_classes([CsrfExemptSessionAuthentication])
 @permission_classes([AllowAny])
 def chat_ask(request):
-    session, question, history = _begin_turn(request)
+    payload = request.data
+    if request.method == "GET":
+        payload = {
+            "question": request.query_params.get("question", ""),
+            "session_id": request.query_params.get("session_id") or None,
+        }
+    logger.info("Chat reply started (%s)", request.method)
+    session, question, history = _begin_turn(request, payload)
 
     try:
         result = answer_question(question, history)
