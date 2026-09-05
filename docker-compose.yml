@@ -15,6 +15,9 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: "1"
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped

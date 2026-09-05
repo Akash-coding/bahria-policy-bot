@@ -105,6 +105,25 @@ export type DashboardStats = {
 
 let csrfToken = "";
 
+function shortText(value: string, limit = 180): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}…`;
+}
+
+async function readResponseBody(response: Response): Promise<unknown> {
+  const raw = await response.text();
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    throw new Error(
+      shortText(trimmed) || `Request failed (${response.status || "unknown"})`,
+    );
+  }
+}
+
 function readCookie(name: string): string {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : "";
@@ -117,11 +136,11 @@ export async function ensureCsrf(): Promise<string> {
     return fromCookie;
   }
   const response = await fetch("/api/auth/csrf/", { credentials: "include" });
-  const data = await response.json();
-  csrfToken =
-    data.csrfToken ||
-    data.csrfToken ||
-    readCookie("csrftoken");
+  const data = (await readResponseBody(response)) as { csrfToken?: string };
+  csrfToken = data.csrfToken || readCookie("csrftoken");
+  if (!csrfToken) {
+    throw new Error("Could not get a CSRF token from the API.");
+  }
   return csrfToken;
 }
 
@@ -147,18 +166,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    throw new Error(
-      response.ok ? "API did not return JSON." : `Request failed (${response.status})`,
-    );
-  }
-  const data = await response.json();
+  const data = await readResponseBody(response);
   if (!response.ok) {
     const detail =
-      data?.detail ||
-      data?.error ||
-      (typeof data === "object" ? JSON.stringify(data) : "Request failed");
+      (data as { detail?: string })?.detail ||
+      (data as { error?: string })?.error ||
+      (typeof data === "string" ? data : "Request failed");
     throw new Error(typeof detail === "string" ? detail : "Request failed");
   }
   return data as T;
@@ -181,7 +194,9 @@ async function askStream(
     body: JSON.stringify({ question, session_id: sessionId || null }),
   });
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
+    const data = await readResponseBody(response).catch((err) => ({
+      detail: err instanceof Error ? err.message : "Request failed",
+    }));
     const detail =
       (data as { detail?: string }).detail ||
       (data as { error?: string }).error ||
@@ -210,8 +225,13 @@ async function askStream(
         .find((item) => item.startsWith("data:"));
       if (!line) continue;
       const payload = line.replace(/^data:\s?/, "");
-      if (!payload) continue;
-      const event = JSON.parse(payload) as StreamEvent;
+      if (!payload || payload === "[DONE]") continue;
+      let event: StreamEvent;
+      try {
+        event = JSON.parse(payload) as StreamEvent;
+      } catch {
+        throw new Error(shortText(payload) || "The answer stream was not valid JSON.");
+      }
       if (event.type === "error") {
         throw new Error(event.detail || "Could not get an answer.");
       }
