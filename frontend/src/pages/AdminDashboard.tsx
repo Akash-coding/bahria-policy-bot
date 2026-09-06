@@ -34,7 +34,7 @@ export function AdminDashboard() {
           <h1 className="page-title">Operations overview</h1>
           <p className="page-subtitle">Knowledge base, local model status, and live chat traffic.</p>
         </div>
-        <Link className="btn btn-navy" to="/admin-panel/chats">
+        <Link className="btn btn-navy" to="/console/chats">
           Review user chats
         </Link>
       </div>

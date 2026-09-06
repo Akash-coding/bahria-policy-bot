@@ -17,7 +17,7 @@ export function LoginPage() {
     setError("");
     try {
       const user = await login(username, password);
-      navigate(user.is_staff ? "/admin-panel" : "/", { replace: true });
+      navigate(user.is_staff ? "/console" : "/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {

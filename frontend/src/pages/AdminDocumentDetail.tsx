@@ -23,7 +23,7 @@ export function AdminDocumentDetail() {
   return (
     <div>
       <p>
-        <Link to="/admin-panel/documents">← All documents</Link>
+        <Link to="/console/documents">← All documents</Link>
       </p>
       <h1 className="page-title">{doc.title}</h1>
       <div className="panel">
@@ -60,7 +60,7 @@ export function AdminDocumentDetail() {
             onClick={async () => {
               if (!confirm("Delete this document?")) return;
               await api.deleteDocument(doc.id);
-              navigate("/admin-panel/documents");
+              navigate("/console/documents");
             }}
           >
             Delete

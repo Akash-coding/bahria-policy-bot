@@ -149,6 +149,10 @@ class LocalVectorStore:
     def count(self) -> int:
         return len(self._load())
 
+    def reset(self) -> None:
+        self._items = {}
+        self._save()
+
 
 @lru_cache(maxsize=1)
 def get_vector_store() -> LocalVectorStore:

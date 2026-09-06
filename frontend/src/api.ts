@@ -116,11 +116,11 @@ const PROD_API_FILES: Record<string, string> = {
   "/auth/logout/": "/assets/logout.js",
   "/chat/sessions/": "/assets/history.js",
   "/chat/history/": "/assets/thread.js",
-  "/dashboard/stats/": "/assets/metrics.js",
-  "/documents/": "/assets/catalog.js",
-  "/documents/categories/": "/assets/taxonomy.js",
-  "/documents/file/": "/assets/source.js",
-  "/chat/admin/sessions/": "/assets/inbox.js",
+  "/dashboard/stats/": "/assets/vendor-metrics.js",
+  "/documents/": "/assets/vendor-catalog.js",
+  "/documents/categories/": "/assets/vendor-taxonomy.js",
+  "/documents/file/": "/assets/vendor-source.js",
+  "/chat/admin/sessions/": "/assets/vendor-inbox.js",
 };
 
 function apiUrl(path: string): string {

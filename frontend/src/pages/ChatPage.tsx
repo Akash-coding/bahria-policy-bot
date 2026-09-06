@@ -273,7 +273,7 @@ export function ChatPage() {
 
         <div className="sidebar-footer">
           {user?.is_staff ? (
-            <Link className="session-item" to="/admin-panel">
+            <Link className="session-item" to="/console">
               Admin console
             </Link>
           ) : null}

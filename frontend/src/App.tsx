@@ -37,12 +37,12 @@ function AdminLayout() {
           </div>
         </div>
         <nav className="admin-links">
-          <NavLink to="/admin-panel" end>
+          <NavLink to="/console" end>
             Dashboard
           </NavLink>
-          <NavLink to="/admin-panel/chats">User chats</NavLink>
-          <NavLink to="/admin-panel/documents">Documents</NavLink>
-          <NavLink to="/admin-panel/upload">Upload policy</NavLink>
+          <NavLink to="/console/chats">User chats</NavLink>
+          <NavLink to="/console/documents">Documents</NavLink>
+          <NavLink to="/console/upload">Upload policy</NavLink>
           <NavLink to="/">Open chatbot</NavLink>
         </nav>
         <div className="admin-user">
@@ -81,7 +81,7 @@ export default function App() {
         <Route path="/" element={<ChatPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route
-          path="/admin-panel/*"
+          path="/console/*"
           element={
             <StaffGate>
               <AdminLayout />

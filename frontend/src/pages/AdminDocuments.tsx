@@ -54,7 +54,7 @@ export function AdminDocuments() {
           <button className="btn btn-navy" onClick={() => void load()}>
             Filter
           </button>
-          <Link className="btn btn-gold" to="/admin-panel/upload">
+          <Link className="btn btn-gold" to="/console/upload">
             Upload document
           </Link>
         </div>
@@ -74,7 +74,7 @@ export function AdminDocuments() {
             {documents.map((doc) => (
               <tr key={doc.id}>
                 <td>
-                  <Link to={`/admin-panel/documents/${doc.id}`}>{doc.title}</Link>
+                  <Link to={`/console/documents/${doc.id}`}>{doc.title}</Link>
                 </td>
                 <td>{doc.category_label}</td>
                 <td>{doc.version}</td>

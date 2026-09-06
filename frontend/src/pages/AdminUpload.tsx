@@ -19,7 +19,7 @@ export function AdminUpload() {
     const form = new FormData(event.currentTarget);
     try {
       const created = await api.upload(form);
-      navigate(`/admin-panel/documents/${created.id}`);
+      navigate(`/console/documents/${created.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
