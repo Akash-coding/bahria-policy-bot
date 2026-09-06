@@ -74,6 +74,7 @@ def _index_document(document: Document) -> None:
     if not chunks:
         raise ProcessingError("No text chunks could be created from this document.")
 
+    logger.info("Embedding %s chunks for document %s", len(chunks), document.id)
     embeddings = get_embedding_service().embed_texts([chunk.content for chunk in chunks])
     if len(embeddings) != len(chunks):
         raise EmbeddingError("Embedding count did not match chunk count.")

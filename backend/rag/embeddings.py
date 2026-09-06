@@ -40,7 +40,7 @@ class EmbeddingService:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         cleaned = [text if text and text.strip() else " " for text in texts]
         if self.provider == "ollama":
-            return [self._embed_ollama(text) for text in cleaned]
+            return self._embed_ollama_many(cleaned)
         if self.provider in {"sentence-transformers", "sbert"}:
             return self._embed_sbert(cleaned)
         if self.provider in {"lexical", "hash"}:
@@ -53,17 +53,34 @@ class EmbeddingService:
     def embed_query(self, text: str) -> list[float]:
         return self.embed_texts([text])[0]
 
-    def _embed_ollama(self, text: str) -> list[float]:
+    def _embed_timeout(self) -> int:
+        return max(int(getattr(settings, "OLLAMA_TIMEOUT", 600)), 120)
+
+    def _embed_ollama_many(self, texts: list[str], batch_size: int = 16) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        total = len(texts)
+        for start in range(0, total, batch_size):
+            batch = texts[start : start + batch_size]
+            logger.info(
+                "Embedding %s-%s of %s with %s",
+                start + 1,
+                start + len(batch),
+                total,
+                self.model_name,
+            )
+            vectors.extend(self._embed_ollama_batch(batch))
+        if len(vectors) != total:
+            raise EmbeddingError("Embedding count did not match text count.")
+        return vectors
+
+    def _embed_ollama_batch(self, texts: list[str]) -> list[list[float]]:
+        timeout = self._embed_timeout()
         url = f"{settings.OLLAMA_BASE_URL}/api/embed"
-        payload = {"model": self.model_name, "input": text, "keep_alive": "60m"}
+        payload = {"model": self.model_name, "input": texts, "keep_alive": "60m"}
         try:
-            response = requests.post(url, json=payload, timeout=60)
+            response = requests.post(url, json=payload, timeout=timeout)
             if response.status_code == 404:
-                response = requests.post(
-                    f"{settings.OLLAMA_BASE_URL}/api/embeddings",
-                    json={"model": self.model_name, "prompt": text},
-                    timeout=60,
-                )
+                return [self._embed_ollama_legacy(text, timeout) for text in texts]
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
@@ -71,6 +88,21 @@ class EmbeddingService:
                 f"Failed to generate embeddings via Ollama ({self.model_name}): {exc}"
             ) from exc
 
+        embeddings = data.get("embeddings")
+        if isinstance(embeddings, list) and len(embeddings) == len(texts):
+            return embeddings
+        if len(texts) == 1 and data.get("embedding"):
+            return [data["embedding"]]
+        raise EmbeddingError("Ollama embedding response did not include a vector.")
+
+    def _embed_ollama_legacy(self, text: str, timeout: int) -> list[float]:
+        response = requests.post(
+            f"{settings.OLLAMA_BASE_URL}/api/embeddings",
+            json={"model": self.model_name, "prompt": text},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
         if "embeddings" in data and data["embeddings"]:
             return data["embeddings"][0]
         if "embedding" in data:
