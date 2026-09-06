@@ -116,6 +116,11 @@ const PROD_API_FILES: Record<string, string> = {
   "/auth/logout/": "/assets/logout.js",
   "/chat/sessions/": "/assets/history.js",
   "/chat/history/": "/assets/thread.js",
+  "/dashboard/stats/": "/assets/metrics.js",
+  "/documents/": "/assets/catalog.js",
+  "/documents/categories/": "/assets/taxonomy.js",
+  "/documents/file/": "/assets/source.js",
+  "/chat/admin/sessions/": "/assets/inbox.js",
 };
 
 function apiUrl(path: string): string {
@@ -144,7 +149,7 @@ async function readResponseBody(response: Response): Promise<unknown> {
   } catch {
     throw new Error(
       /sorry, you do not have permission/i.test(trimmed)
-        ? "The campus network blocked this chat request. Please try again."
+        ? "The campus network blocked this request. Please try again."
         : shortText(trimmed) || `Request failed (${response.status || "unknown"})`,
     );
   }
@@ -379,15 +384,15 @@ export const api = {
   health: () => request<Record<string, unknown>>("/api/health/"),
   stats: () => request<DashboardStats>("/api/dashboard/stats/"),
   documents: (query = "") => request<DocumentRecord[]>(`/api/documents/${query}`),
-  document: (id: number) => request<DocumentRecord>(`/api/documents/${id}/`),
+  document: (id: number) => request<DocumentRecord>(`/api/documents/file/?id=${id}`),
   deleteDocument: (id: number) =>
-    request<void>(`/api/documents/${id}/`, { method: "DELETE" }),
+    request<void>(`/api/documents/file/?id=${id}`, { method: "DELETE" }),
   reprocess: (id: number) =>
-    request<DocumentRecord>(`/api/documents/${id}/reprocess/`, { method: "POST" }),
+    request<DocumentRecord>(`/api/documents/file/?id=${id}`, { method: "POST" }),
   categories: () => request<Array<{ value: string; label: string }>>("/api/documents/categories/"),
   upload: (form: FormData) =>
     request<DocumentRecord>("/api/documents/", { method: "POST", body: form }),
   adminSessions: () => request<AdminChatSession[]>("/api/chat/admin/sessions/"),
   adminSession: (id: string) =>
-    request<AdminChatSession>(`/api/chat/admin/sessions/${id}/`),
+    request<AdminChatSession>(`/api/chat/admin/sessions/?session_id=${id}`),
 };

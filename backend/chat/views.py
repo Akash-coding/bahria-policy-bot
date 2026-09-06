@@ -295,6 +295,9 @@ def chat_history(request):
 @api_view(["GET"])
 @permission_classes([IsStaffUser])
 def admin_session_list(request):
+    session_id = request.query_params.get("session_id")
+    if session_id:
+        return admin_session_detail(request, session_id)
     sessions = (
         ChatSession.objects.select_related("user")
         .annotate(message_count=Count("messages"))

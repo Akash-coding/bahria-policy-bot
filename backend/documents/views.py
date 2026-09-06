@@ -115,6 +115,19 @@ def document_reprocess(request, pk: int):
     return Response(DocumentSerializer(document, context={"request": request}).data)
 
 
+@api_view(["GET", "DELETE", "POST"])
+@permission_classes([IsStaffUser])
+def document_file(request):
+    raw_id = request.query_params.get("id")
+    try:
+        pk = int(raw_id)
+    except (TypeError, ValueError):
+        return Response({"detail": "Document id is required."}, status=status.HTTP_400_BAD_REQUEST)
+    if request.method == "POST":
+        return document_reprocess(request, pk)
+    return document_detail(request, pk)
+
+
 @api_view(["GET"])
 @permission_classes([IsStaffUser])
 def document_categories(_request):

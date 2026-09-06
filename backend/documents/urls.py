@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("", views.document_list_create, name="document-list"),
     path("categories/", views.document_categories, name="document-categories"),
+    path("file/", views.document_file, name="document-file"),
     path("<int:pk>/", views.document_detail, name="document-detail"),
     path("<int:pk>/reprocess/", views.document_reprocess, name="document-reprocess"),
 ]
