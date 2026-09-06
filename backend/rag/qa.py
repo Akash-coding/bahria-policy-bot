@@ -129,17 +129,26 @@ def _ready(answer: str, found: bool) -> dict[str, Any]:
     }
 
 
+def _usable_answer(text: str) -> str:
+    if not (text or "").strip():
+        return ""
+    cleaned = sanitize_answer(text)
+    if not cleaned or cleaned == NOT_FOUND_MESSAGE:
+        return ""
+    if _contains_thinking(cleaned):
+        return ""
+    return cleaned
+
+
 def _finalize_answer(answer: str, prepared: dict[str, Any], visible: str = "") -> str:
-    shown = (visible or "").strip()
-    cleaned = (answer or "").strip()
-    shown_ok = bool(shown) and NOT_FOUND_MESSAGE.lower() not in shown.lower()
-    cleaned_ok = bool(cleaned) and NOT_FOUND_MESSAGE.lower() not in cleaned.lower()
-    if shown_ok:
+    shown = _usable_answer(visible)
+    cleaned = _usable_answer(answer)
+    if shown:
         # Keep the streamed wording. Only extend it if the final text is the same answer, just longer.
-        if cleaned_ok and (cleaned.startswith(shown) or shown.startswith(cleaned)):
+        if cleaned and (cleaned.startswith(shown) or shown.startswith(cleaned)):
             return cleaned if len(cleaned) >= len(shown) else shown
         return shown
-    if cleaned_ok:
+    if cleaned:
         return cleaned
     if prepared.get("retrieval") == "chat":
         return _small_talk_fallback()
@@ -165,28 +174,36 @@ def _prefer_excerpts_if_refused(answer: str, hits: list[dict[str, Any]]) -> str:
     return answer
 
 
+def _contains_thinking(text: str) -> bool:
+    return bool(re.search(r"</?think>|</?unused94>|</?unused95>", text or "", flags=re.I))
+
+
 def _still_thinking(raw: str) -> bool:
-    if re.search(r"<unused94>", raw, flags=re.I) and not re.search(r"<unused95>", raw, flags=re.I):
+    text = raw or ""
+    if re.search(r"<unused94>", text, flags=re.I) and not re.search(r"<unused95>", text, flags=re.I):
         return True
-    if re.search(r"<think>", raw, flags=re.I) and not re.search(r"</think>", raw, flags=re.I):
+    if re.search(r"</think>|<unused95>", text, flags=re.I):
+        return False
+    if re.search(r"<think>", text, flags=re.I):
         return True
-    kept = _drop_reasoning(_strip_think_tags(raw))
+    first_line = text.lstrip().splitlines()[0] if text.strip() else ""
+    if _THINKING_HINT.search(text) or _REASONING_LINE.match(first_line):
+        return True
+    kept = _drop_reasoning(_strip_think_tags(text))
     return not kept.strip()
 
 
 def _partial_visible(raw: str) -> str:
     if _still_thinking(raw):
         return ""
-    cleaned = sanitize_answer(raw)
-    if cleaned == NOT_FOUND_MESSAGE:
-        return ""
-    return cleaned
+    return _usable_answer(raw)
 
 
 _REASONING_LINE = re.compile(
     r"^(okay[,.]?\s+|alright[,.]?\s+|hmm[,.]?\s+|wait[—\-,. ]|"
-    r"the user\b|let me\b|looking at\b|i (?:need|should|see|will|must)\b|"
+    r"the user\b|let me\b|looking at\b|i'?ll\b|i (?:need|should|see|will|must)\b|"
     r"we are given\b|we must\b|let's craft\b|let us craft\b|"
+    r"the safest approach|perfect[,.]?\s+i'?ll|"
     r"identify the core question|scan the provided|"
     r"look(?:ing)? (?:through|at) the excerpts|"
     r"let me (?:think|scan|check|tackle)|step \d+|analysis:|reasoning:|"
@@ -202,7 +219,15 @@ _REASONING_BLOB = re.compile(
     r"let me tackle|the user (?:is asking|asked|wants|specifically)|"
     r"looking at the provided|retrieved policy context|double-checking|"
     r"avoiding pitfalls|i should prioritize|first line:|second line:|"
-    r"won't say|will not mention|exact details from)",
+    r"won't say|will not mention|exact details from|"
+    r"i'?ll say something like|the safest approach|in roman urdu style|"
+    r"perfect\.?\s+i'?ll respond|no extra words)",
+    re.I,
+)
+_THINKING_HINT = re.compile(
+    r"(</think>|<think>|i'?ll say something like|the safest approach|"
+    r"in roman urdu style|perfect\.?\s+i'?ll respond|no extra words|"
+    r"let me think|chain of thought|hidden reasoning)",
     re.I,
 )
 _GREETING_START = re.compile(
@@ -210,6 +235,10 @@ _GREETING_START = re.compile(
     r"wa\s*alaikum|walaikum|dua\b|jumma?h?\s+mubarak|"
     r"good (?:morning|afternoon|evening)|how are you|how(?:'s| is) it going|"
     r"what(?:'s| is) up|thanks|thank you|thx|bye+|goodbye|see you)\b",
+    re.I,
+)
+_CHAT_STYLE = re.compile(
+    r"\b(roman urdu|urdu me|baat karo|talk to me|chat (?:with|in)|in english)\b",
     re.I,
 )
 _POLICY_HINT = re.compile(
@@ -241,19 +270,23 @@ def _greeting_reply(question: str) -> str | None:
 
 def _is_small_talk(question: str) -> bool:
     text = question.strip()
-    if len(text) > 80 or _POLICY_HINT.search(text):
+    if len(text) > 120 or _POLICY_HINT.search(text):
         return False
-    return bool(_GREETING_START.search(text))
+    return bool(_GREETING_START.search(text) or _CHAT_STYLE.search(text))
 
 
 def _strip_think_tags(text: str) -> str:
     cleaned = text or ""
     cleaned = re.sub(r"```(?:markdown|md)?", "", cleaned, flags=re.I)
     cleaned = cleaned.replace("```", "")
+    # Qwen often streams thinking with only the closing tag. Keep text after the last closer.
+    if re.search(r"</think>", cleaned, flags=re.I):
+        cleaned = re.split(r"</think>", cleaned, flags=re.I)[-1]
     if re.search(r"<unused95>", cleaned, flags=re.I):
         cleaned = re.split(r"</?unused95>", cleaned, flags=re.I)[-1]
     cleaned = re.sub(r"<unused94>.*?thought.*?(?:<unused95>|$)", "", cleaned, flags=re.I | re.S)
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.I | re.S)
+    cleaned = re.sub(r"</?think>", "", cleaned, flags=re.I)
     cleaned = re.sub(r"</?unused\d+>", "", cleaned)
     cleaned = re.sub(r"^\s*thought\b.*?(?=\n[A-Z#])", "", cleaned, flags=re.I | re.S)
     cleaned = re.sub(r"^source:.*$", "", cleaned, flags=re.I | re.M)

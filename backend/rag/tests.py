@@ -118,7 +118,39 @@ class AnswerCleanupTests(SimpleTestCase):
         cleaned = sanitize_answer(raw)
         self.assertIn("75%", cleaned)
         self.assertNotIn("let me tackle", cleaned.lower())
-        self.assertTrue(_partial_visible(raw))
+        self.assertEqual(_partial_visible(raw), "")
+
+    def test_think_close_without_open_tag_is_hidden(self):
+        raw = (
+            "I'll say something like 'Hello! How can I help you today?' but in Roman Urdu style.\n\n"
+            "Hmm... 'Hello' in Roman Urdu could be 'Hello!' or 'Salam!'\n\n"
+            "The safest approach is to use 'Hello!' as the greeting.\n\n"
+            "Perfect. I'll respond with just that - no extra words.\n"
+            "</think>\n"
+            "Hello! Kaise madad kar sakta hoon?"
+        )
+        self.assertEqual(_partial_visible(raw.split("</think>")[0]), "")
+        cleaned = sanitize_answer(raw)
+        self.assertEqual(cleaned, "Hello! Kaise madad kar sakta hoon?")
+        self.assertNotIn("safest approach", cleaned)
+        self.assertNotIn("</think>", cleaned)
+        self.assertEqual(_partial_visible(raw), "Hello! Kaise madad kar sakta hoon?")
+
+    def test_stream_emits_only_final_answer_after_think(self):
+        chunks = [
+            "I'll say something like Hello in Roman Urdu style. ",
+            "The safest approach is Salam.\n</think>\n",
+            "Hello! Kaise madad kar sakta hoon?",
+        ]
+        with patch("rag.qa.stream_generate", return_value=iter(chunks)):
+            events = list(stream_answer_events("roman urdu me baat karo muj sy"))
+        deltas = [item["text"] for item in events if item["type"] == "delta"]
+        done = [item for item in events if item["type"] == "done"][-1]
+        self.assertTrue(deltas)
+        self.assertEqual(deltas[-1], "Hello! Kaise madad kar sakta hoon?")
+        self.assertEqual(done["answer"], "Hello! Kaise madad kar sakta hoon?")
+        self.assertNotIn("</think>", done["answer"])
+        self.assertEqual(done["sources"], [])
 
     def test_instruction_echo_is_hidden(self):
         raw = (

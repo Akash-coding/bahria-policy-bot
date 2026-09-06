@@ -78,6 +78,8 @@ def generate_answer(system_prompt: str, user_prompt: str) -> str:
 
     message = data.get("message") or {}
     content = (message.get("content") or data.get("response") or "").strip()
+    if not content and (message.get("thinking") or "").strip():
+        content = ""
     if not content:
         raise OllamaError("Ollama returned an empty response.")
     return content
@@ -105,8 +107,10 @@ def stream_generate(system_prompt: str, user_prompt: str) -> Iterator[str]:
                 error = data.get("error")
                 if error:
                     raise OllamaError(str(error))
-                message = data.get("message") or {}
+                thinking = message.get("thinking") or ""
                 content = message.get("content") or data.get("response") or ""
+                if thinking and not content:
+                    continue
                 if content:
                     yield content
                 if data.get("done"):

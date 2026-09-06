@@ -4,6 +4,7 @@ import { api, type ChatMessage, type ChatSession, type Source } from "../api";
 import { useAuth } from "../auth";
 import { MarkdownMessage } from "../markdown";
 import { ThemeToggle } from "../theme";
+import { stripThinking } from "../visibleAnswer";
 
 const PROMPT_CARDS = [
   { title: "Attendance policy", prompt: "What is the attendance policy?" },
@@ -157,7 +158,7 @@ export function ChatPage() {
         if (event.type === "delta") {
           setMessages((current) =>
             current.map((item) =>
-              item.id === streamId ? { ...item, content: event.text, streaming: true } : item,
+              item.id === streamId ? { ...item, content: stripThinking(event.text), streaming: true } : item,
             ),
           );
         }
@@ -166,13 +167,13 @@ export function ChatPage() {
           setMessages((current) =>
             current.map((item) => {
               if (item.id !== streamId) return item;
-              const streamed = (item.content || "").trim();
-              const incoming = (event.answer || "").trim();
+              const streamed = stripThinking(item.content || "");
+              const incoming = stripThinking(event.answer || "");
               return {
                 ...item,
                 id: event.message?.id || item.id,
                 role: "assistant" as const,
-                content: streamed || incoming,
+                content: incoming || streamed,
                 sources: event.sources || event.message?.sources || [],
                 found: event.found,
                 streaming: false,
@@ -190,7 +191,7 @@ export function ChatPage() {
             ? {
                 ...item,
                 streaming: false,
-                content: item.content || "The assistant could not finish that reply. Please try again.",
+                content: stripThinking(item.content) || "The assistant could not finish that reply. Please try again.",
               }
             : item,
         ),
@@ -323,14 +324,15 @@ export function ChatPage() {
           ) : (
             messages.map((message) => {
               const kind = message.role === "user" ? "user" : "assistant";
+              const shown = kind === "assistant" ? stripThinking(message.content) : message.content;
               return (
                 <div className={`bubble-row ${kind}`} key={message.id}>
                   {kind === "assistant" ? <span className="avatar bot">AI</span> : null}
                   <div className={`bubble ${kind} ${message.streaming ? "streaming" : ""}`}>
                     {kind === "assistant" ? (
-                      message.content ? (
+                      shown ? (
                         <>
-                          <MarkdownMessage text={message.content} />
+                          <MarkdownMessage text={shown} />
                           {message.streaming ? <span className="stream-cursor" aria-hidden="true" /> : null}
                         </>
                       ) : (
