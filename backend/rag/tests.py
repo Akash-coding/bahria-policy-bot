@@ -120,6 +120,18 @@ class AnswerCleanupTests(SimpleTestCase):
         self.assertNotIn("let me tackle", cleaned.lower())
         self.assertTrue(_partial_visible(raw))
 
+    def test_instruction_echo_is_hidden(self):
+        raw = (
+            'We are given a user message: "/no_think\\nhi" As the Bahria University Policy Bot, we must:\n\n'
+            "If the user greets (including salam or dua), reply in kind in two short, warm sentences.\n\n"
+            "Let's craft two short, warm sentences:\n\n"
+            'Example: "Assalamu Alaikum! How can I assist you today?" But note: the user didn\'t'
+        )
+        self.assertEqual(_partial_visible(raw), "")
+        cleaned = sanitize_answer(raw)
+        self.assertNotIn("/no_think", cleaned)
+        self.assertNotIn("We are given a user message", cleaned)
+
     def test_partial_visible_hides_unfinished_thoughts(self):
         self.assertEqual(_partial_visible("<unused94>thought still going"), "")
         visible = _partial_visible(

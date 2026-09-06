@@ -182,17 +182,23 @@ def _partial_visible(raw: str) -> str:
 _REASONING_LINE = re.compile(
     r"^(okay[,.]?\s+|alright[,.]?\s+|hmm[,.]?\s+|wait[—\-,. ]|"
     r"the user\b|let me\b|looking at\b|i (?:need|should|see|will|must)\b|"
+    r"we are given\b|we must\b|let's craft\b|let us craft\b|"
     r"identify the core question|scan the provided|"
     r"look(?:ing)? (?:through|at) the excerpts|"
     r"let me (?:think|scan|check|tackle)|step \d+|analysis:|reasoning:|"
+    r"example:|important:|"
     r"\*?(?:double-checking|trimming|avoiding pitfalls))",
     re.I,
 )
 _REASONING_BLOB = re.compile(
-    r"\b(let me tackle|the user (?:is asking|asked|wants|specifically)|"
+    r"(/no_think|we are given a user message|as the bahria university policy bot|"
+    r"if the user greets|reply in kind in two short|let's craft|let us craft|"
+    r"the user said|since the user used|matching the user|"
+    r"do not invent policy|do not write analysis|"
+    r"let me tackle|the user (?:is asking|asked|wants|specifically)|"
     r"looking at the provided|retrieved policy context|double-checking|"
     r"avoiding pitfalls|i should prioritize|first line:|second line:|"
-    r"won't say|will not mention|exact details from)\b",
+    r"won't say|will not mention|exact details from)",
     re.I,
 )
 _GREETING_START = re.compile(
