@@ -1,9 +1,11 @@
 from unittest.mock import patch
+import json
 
 from rag.chunking import split_pages
 from rag.extraction import extract_pages
 from rag.prompts import NOT_FOUND_MESSAGE
 from rag.qa import _finalize_answer, _greeting_reply, _partial_visible, answer_question, sanitize_answer, stream_answer_events
+from rag.ollama_client import stream_generate
 from django.test import SimpleTestCase
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -191,3 +193,29 @@ class AnswerCleanupTests(SimpleTestCase):
             "Keep 75 percent attendance if you want to sit the final exam.",
         )
         self.assertNotIn("Here is the helpful point", answer)
+
+
+class OllamaStreamParseTests(SimpleTestCase):
+    def test_stream_reads_message_and_skips_thinking_only_chunks(self):
+        lines = [
+            json.dumps({"message": {"thinking": "planning the reply", "content": ""}}),
+            json.dumps({"message": {"content": "Hello"}}),
+            json.dumps({"message": {"content": "!"}, "done": True}),
+        ]
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def iter_lines(self, decode_unicode=True):
+                return iter(lines)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with patch("rag.ollama_client.requests.post", return_value=FakeResponse()):
+            chunks = list(stream_generate("sys", "user"))
+        self.assertEqual(chunks, ["Hello", "!"])

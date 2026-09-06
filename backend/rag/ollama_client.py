@@ -107,6 +107,7 @@ def stream_generate(system_prompt: str, user_prompt: str) -> Iterator[str]:
                 error = data.get("error")
                 if error:
                     raise OllamaError(str(error))
+                message = data.get("message") or {}
                 thinking = message.get("thinking") or ""
                 content = message.get("content") or data.get("response") or ""
                 if thinking and not content:
