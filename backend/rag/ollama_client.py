@@ -15,11 +15,14 @@ class OllamaError(RuntimeError):
 
 
 def _chat_payload(system_prompt: str, user_prompt: str, stream: bool) -> dict:
+    user_content = user_prompt
+    if "qwen" in settings.OLLAMA_MODEL.lower() and "/no_think" not in user_content:
+        user_content = f"/no_think\n{user_content}"
     payload = {
         "model": settings.OLLAMA_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
+            {"role": "user", "content": user_content},
         ],
         "stream": stream,
         "keep_alive": "24h",

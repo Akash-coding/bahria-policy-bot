@@ -134,33 +134,45 @@ class RagAndChatTests(TestCase):
         self.assertEqual(len(history.data["messages"]), 2)
 
     def test_chat_stream_greeting(self):
-        response = self.client.post(
-            "/api/chat/stream/",
-            {"question": "hello"},
-            format="json",
-            HTTP_ACCEPT="text/event-stream",
-        )
+        with patch(
+            "rag.qa.stream_generate",
+            return_value=iter(["Wa alaikum assalam. ", "How can I help?"]),
+        ):
+            response = self.client.post(
+                "/api/chat/stream/",
+                {"question": "salam"},
+                format="json",
+                HTTP_ACCEPT="text/event-stream",
+            )
         self.assertEqual(response.status_code, 200)
         body = b"".join(response.streaming_content).decode()
         self.assertIn('"type": "done"', body)
-        self.assertIn("Hello", body)
+        self.assertIn("alaikum", body.lower())
         self.assertIn("session_id", body)
 
     def test_chat_stream_greeting_get(self):
-        response = self.client.get(
-            "/api/ask/",
-            {"question": "hello"},
-            HTTP_ACCEPT="text/event-stream",
-        )
+        with patch(
+            "rag.qa.stream_generate",
+            return_value=iter(["Wa alaikum assalam. ", "How can I help?"]),
+        ):
+            response = self.client.get(
+                "/api/ask/",
+                {"question": "assalam o alaikum"},
+                HTTP_ACCEPT="text/event-stream",
+            )
         self.assertEqual(response.status_code, 200)
         body = b"".join(response.streaming_content).decode()
         self.assertIn('"type": "done"', body)
-        self.assertIn("Hello", body)
+        self.assertIn("alaikum", body.lower())
 
     def test_chat_json_reply_get(self):
-        response = self.client.get("/api/reply/", {"question": "hello"})
+        with patch(
+            "rag.qa.generate_answer",
+            return_value="Wa alaikum assalam. How can I help?",
+        ):
+            response = self.client.get("/api/reply/", {"question": "salam"})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Hello", response.data["answer"])
+        self.assertIn("alaikum", response.data["answer"].lower())
         self.assertTrue(response.data["message"]["content"])
 
     def test_chat_stream_policy_answer(self):

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from rag.chunking import split_pages
 from rag.extraction import extract_pages
 from rag.prompts import NOT_FOUND_MESSAGE
@@ -64,10 +66,14 @@ class AnswerCleanupTests(SimpleTestCase):
         self.assertIn("## Mobile Phones", cleaned)
 
     def test_greeting_gets_a_welcome_reply(self):
-        result = answer_question("hello")
+        with patch(
+            "rag.qa.generate_answer",
+            return_value="Wa alaikum assalam. How can I help with a university policy?",
+        ):
+            result = answer_question("salam")
         self.assertTrue(result["found"])
         self.assertEqual(result["sources"], [])
-        self.assertIn("Hello", result["answer"])
+        self.assertIn("alaikum", result["answer"].lower())
         self.assertNotEqual(result["answer"], NOT_FOUND_MESSAGE)
 
     def test_bot_identity_question_has_no_sources(self):
@@ -82,10 +88,37 @@ class AnswerCleanupTests(SimpleTestCase):
         self.assertIsNone(_greeting_reply("hi, what is the attendance policy?"))
 
     def test_stream_greeting_is_immediate(self):
-        events = list(stream_answer_events("hello"))
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["type"], "done")
-        self.assertIn("Hello", events[0]["answer"])
+        with patch(
+            "rag.qa.stream_generate",
+            return_value=iter(["Wa alaikum assalam. ", "How can I help?"]),
+        ):
+            events = list(stream_answer_events("assalam o alaikum"))
+        self.assertGreaterEqual(len(events), 2)
+        self.assertEqual(events[-1]["type"], "done")
+        self.assertIn("alaikum", events[-1]["answer"].lower())
+
+    def test_qwen_thinking_is_hidden(self):
+        raw = (
+            "Okay, let me tackle this user query about Bahria University's attendance policy. "
+            "The user specifically asked for a 2-line definition.\n\n"
+            "Looking at the provided policy excerpts (all from page 32 of the Student Handbook), I see key points.\n\n"
+            "*Double-checking*: 75% is the exact figure."
+        )
+        self.assertEqual(_partial_visible(raw), "")
+        cleaned = sanitize_answer(raw)
+        self.assertNotIn("let me tackle", cleaned.lower())
+        self.assertNotIn("Double-checking", cleaned)
+
+    def test_qwen_thinking_then_answer(self):
+        raw = (
+            "Okay, let me tackle this user query about attendance.\n\n"
+            "Students must maintain 75% attendance in each course or they cannot sit the final examination. "
+            "Attendance shortfalls are not condoned."
+        )
+        cleaned = sanitize_answer(raw)
+        self.assertIn("75%", cleaned)
+        self.assertNotIn("let me tackle", cleaned.lower())
+        self.assertTrue(_partial_visible(raw))
 
     def test_partial_visible_hides_unfinished_thoughts(self):
         self.assertEqual(_partial_visible("<unused94>thought still going"), "")

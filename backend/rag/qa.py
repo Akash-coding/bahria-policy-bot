@@ -9,6 +9,7 @@ from django.conf import settings
 from .ollama_client import OllamaError, generate_answer, stream_generate
 from .prompts import (
     BOT_IDENTITY_ANSWER,
+    GREETING_SYSTEM_PROMPT,
     NOT_FOUND_MESSAGE,
     POLICY_BOT_SYSTEM_PROMPT,
     USER_PROMPT_TEMPLATE,
@@ -27,9 +28,15 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
     if identity:
         return _ready(identity, found=True)
 
-    greeting = _greeting_reply(question)
-    if greeting:
-        return _ready(greeting, found=True)
+    if _is_small_talk(question):
+        return {
+            "mode": "generate",
+            "system_prompt": GREETING_SYSTEM_PROMPT,
+            "user_prompt": question,
+            "hits": [],
+            "sources": [],
+            "retrieval": "chat",
+        }
 
     relevant, method = retrieve_policy_chunks(question, history or [])
     if not relevant:
@@ -64,9 +71,9 @@ def answer_question(question: str, history: list[dict[str, str]] | None = None) 
             generate_answer(prepared["system_prompt"], prepared["user_prompt"])
         )
     except OllamaError:
-        logger.warning("Ollama unavailable; returning extractive policy excerpts")
-        answer = _extractive_answer(prepared["hits"])
-    answer = _prefer_excerpts_if_refused(answer, prepared["hits"])
+        logger.warning("Ollama unavailable; using a local fallback")
+        answer = ""
+    answer = _finalize_answer(answer, prepared)
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
     return {
@@ -98,12 +105,12 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
             if visible and visible != last_visible:
                 last_visible = visible
                 yield {"type": "delta", "text": visible}
-        answer = sanitize_answer(raw) if raw.strip() else _extractive_answer(prepared["hits"])
+        answer = sanitize_answer(raw) if raw.strip() else ""
     except OllamaError:
-        logger.warning("Ollama unavailable during stream; returning extractive policy excerpts")
-        answer = sanitize_answer(raw) if raw.strip() else _extractive_answer(prepared["hits"])
+        logger.warning("Ollama unavailable during stream; using a local fallback")
+        answer = sanitize_answer(raw) if raw.strip() else ""
 
-    answer = _prefer_excerpts_if_refused(answer, prepared["hits"])
+    answer = _finalize_answer(answer, prepared)
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
     if answer != last_visible:
@@ -125,6 +132,27 @@ def _ready(answer: str, found: bool) -> dict[str, Any]:
     }
 
 
+def _finalize_answer(answer: str, prepared: dict[str, Any]) -> str:
+    hits = prepared.get("hits") or []
+    cleaned = (answer or "").strip()
+    if cleaned and NOT_FOUND_MESSAGE.lower() not in cleaned.lower():
+        return cleaned
+    if hits:
+        if cleaned and NOT_FOUND_MESSAGE.lower() in cleaned.lower():
+            logger.info("Model refused despite retrieved policy excerpts; returning excerpts")
+        return _extractive_answer(hits)
+    if prepared.get("retrieval") == "chat":
+        return _small_talk_fallback()
+    return NOT_FOUND_MESSAGE
+
+
+def _small_talk_fallback() -> str:
+    return (
+        "Wa alaikum assalam. I am the Bahria University Policy Bot. "
+        "Ask whenever you need a university policy explained."
+    )
+
+
 def _prefer_excerpts_if_refused(answer: str, hits: list[dict[str, Any]]) -> str:
     """If the model refuses but retrieval already found policy text, show those excerpts."""
     if hits and NOT_FOUND_MESSAGE.lower() in (answer or "").lower():
@@ -138,7 +166,8 @@ def _still_thinking(raw: str) -> bool:
         return True
     if re.search(r"<think>", raw, flags=re.I) and not re.search(r"</think>", raw, flags=re.I):
         return True
-    return False
+    kept = _drop_reasoning(_strip_think_tags(raw))
+    return not kept.strip()
 
 
 def _partial_visible(raw: str) -> str:
@@ -146,26 +175,29 @@ def _partial_visible(raw: str) -> str:
         return ""
     cleaned = sanitize_answer(raw)
     if cleaned == NOT_FOUND_MESSAGE:
-        stripped = re.sub(r"</?unused\d+>", "", raw, flags=re.I)
-        stripped = re.sub(r"<think>.*?</think>", "", stripped, flags=re.I | re.S)
-        stripped = stripped.strip()
-        if not stripped:
-            return ""
-        first = stripped.splitlines()[0].strip()
-        if _REASONING_LINE.match(first) or not re.search(r"^#|\d+\.\s+\*\*", stripped, re.M):
-            return ""
+        return ""
     return cleaned
 
 
 _REASONING_LINE = re.compile(
-    r"^(the user is asking|i need to scan|identify the core question|"
-    r"scan the provided|look(?:ing)? (?:through|at) the excerpts|"
-    r"let me (?:think|scan|check)|step \d+|analysis:|reasoning:)",
+    r"^(okay[,.]?\s+|alright[,.]?\s+|hmm[,.]?\s+|wait[—\-,. ]|"
+    r"the user\b|let me\b|looking at\b|i (?:need|should|see|will|must)\b|"
+    r"identify the core question|scan the provided|"
+    r"look(?:ing)? (?:through|at) the excerpts|"
+    r"let me (?:think|scan|check|tackle)|step \d+|analysis:|reasoning:|"
+    r"\*?(?:double-checking|trimming|avoiding pitfalls))",
     re.I,
 )
-
+_REASONING_BLOB = re.compile(
+    r"\b(let me tackle|the user (?:is asking|asked|wants|specifically)|"
+    r"looking at the provided|retrieved policy context|double-checking|"
+    r"avoiding pitfalls|i should prioritize|first line:|second line:|"
+    r"won't say|will not mention|exact details from)\b",
+    re.I,
+)
 _GREETING_START = re.compile(
-    r"^\s*(hi+|hello+|hey+|salam|salaam|assalam|"
+    r"^\s*(hi+|hello+|hey+|salam|salaam|assalam|as-?salam|"
+    r"wa\s*alaikum|walaikum|dua\b|jumma?h?\s+mubarak|"
     r"good (?:morning|afternoon|evening)|how are you|how(?:'s| is) it going|"
     r"what(?:'s| is) up|thanks|thank you|thx|bye+|goodbye|see you)\b",
     re.I,
@@ -194,31 +226,17 @@ def _identity_reply(question: str) -> str | None:
 
 
 def _greeting_reply(question: str) -> str | None:
+    return None if not _is_small_talk(question) else _small_talk_fallback()
+
+
+def _is_small_talk(question: str) -> bool:
     text = question.strip()
-    if len(text) > 80 or _POLICY_HINT.search(text) or not _GREETING_START.search(text):
-        return None
-    lowered = text.lower()
-    if lowered.startswith(("thank", "thx")):
-        return (
-            "## You're welcome\n\n"
-            "Happy to help. Ask whenever you need a Bahria University policy, such as attendance, "
-            "examinations, fees, or student conduct."
-        )
-    if re.match(r"^\s*(bye+|goodbye|see you)\b", text, re.I):
-        return (
-            "## Goodbye\n\n"
-            "Take care. Come back anytime you need a university policy explained."
-        )
-    return (
-        "## Hello\n\n"
-        "I am the Bahria University Policy Bot. I answer from official university policies "
-        "on attendance, examinations, fees, leaves, and student conduct.\n\n"
-        "Ask who I am if you want a full introduction, or ask a policy question."
-    )
+    if len(text) > 80 or _POLICY_HINT.search(text):
+        return False
+    return bool(_GREETING_START.search(text))
 
 
-def sanitize_answer(text: str) -> str:
-    """Keep only the user-facing policy answer; drop model reasoning and source lines."""
+def _strip_think_tags(text: str) -> str:
     cleaned = text or ""
     cleaned = re.sub(r"```(?:markdown|md)?", "", cleaned, flags=re.I)
     cleaned = cleaned.replace("```", "")
@@ -229,23 +247,32 @@ def sanitize_answer(text: str) -> str:
     cleaned = re.sub(r"</?unused\d+>", "", cleaned)
     cleaned = re.sub(r"^\s*thought\b.*?(?=\n[A-Z#])", "", cleaned, flags=re.I | re.S)
     cleaned = re.sub(r"^source:.*$", "", cleaned, flags=re.I | re.M)
+    return cleaned
 
-    lines = cleaned.splitlines()
-    start = 0
-    for index, line in enumerate(lines):
+
+def _drop_reasoning(text: str) -> str:
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text or "") if part.strip()]
+    kept = [part for part in paragraphs if not _REASONING_BLOB.search(part) and not _REASONING_LINE.match(part.splitlines()[0].strip())]
+    if kept:
+        return "\n\n".join(kept)
+    lines = []
+    for line in (text or "").splitlines():
         stripped = line.strip()
         if not stripped:
+            if lines and lines[-1] != "":
+                lines.append("")
             continue
-        if stripped.startswith("#") or re.match(r"^\d+\.\s+\*\*", stripped):
-            start = index
-            break
-        if _REASONING_LINE.match(stripped):
+        if _REASONING_LINE.match(stripped) or _REASONING_BLOB.search(stripped):
             continue
-        start = index
-        break
-    cleaned = "\n".join(lines[start:]).strip()
+        lines.append(stripped)
+    return "\n".join(lines).strip()
+
+
+def sanitize_answer(text: str) -> str:
+    """Keep only the user-facing policy answer; drop model reasoning and source lines."""
+    cleaned = _drop_reasoning(_strip_think_tags(text))
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return cleaned or NOT_FOUND_MESSAGE
+    return cleaned.strip() or NOT_FOUND_MESSAGE
 
 
 def _build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
