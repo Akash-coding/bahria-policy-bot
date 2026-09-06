@@ -24,16 +24,17 @@ def retrieve_policy_chunks(
     retrieval_query = _retrieval_query(question, history or [])
     embedding = get_embedding_service().embed_query(retrieval_query)
     store = get_vector_store()
-    raw_hits = store.query(embedding, top_k=max(settings.RAG_TOP_K * 2, settings.RAG_TOP_K))
-    vector_hits = _dedupe_hits(raw_hits)
+    raw_hits = store.query(embedding, top_k=max(settings.RAG_TOP_K * 4, 12))
+    vector_hits = _usable_hits(raw_hits, question)
     relevant = [
         hit
         for hit in vector_hits
         if hit.get("relevance_score", 0) >= settings.SIMILARITY_THRESHOLD
     ]
+    relevant = _prefer_on_topic(relevant, question)
 
     if _confident(relevant, question):
-        return relevant[: settings.RAG_TOP_K], "vector"
+        return _ranked(relevant, question)[: settings.RAG_TOP_K], "vector"
 
     extra_ids: list[str] = []
     if getattr(settings, "GRAPH_RAG_ENABLED", True):
@@ -59,15 +60,15 @@ def retrieve_policy_chunks(
             if hit:
                 graph_hits.append(hit)
 
-    merged = _dedupe_hits(relevant + graph_hits)
-    merged.sort(key=lambda hit: float(hit.get("relevance_score") or 0), reverse=True)
+    merged = _prefer_on_topic(_usable_hits(relevant + graph_hits, question), question)
     if not merged:
         logger.info("No vector or graph matches for question")
         return [], "none"
 
     method = "graph" if graph_hits else "vector"
-    logger.info("Retrieved %s chunks via %s search", len(merged[: settings.RAG_TOP_K]), method)
-    return merged[: settings.RAG_TOP_K], method
+    ranked = _ranked(merged, question)[: settings.RAG_TOP_K]
+    logger.info("Retrieved %s chunks via %s search", len(ranked), method)
+    return ranked, method
 
 
 def rebuild_graph_from_store() -> None:
@@ -108,6 +109,71 @@ def _dedupe_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
             hit = {**hit, "metadata": meta}
         unique.append(hit)
     return unique
+
+
+def _usable_hits(hits: list[dict[str, Any]], _question: str) -> list[dict[str, Any]]:
+    usable = []
+    for hit in _dedupe_hits(hits):
+        if _is_junk_chunk(hit.get("content") or ""):
+            continue
+        usable.append(hit)
+    return usable
+
+
+def _is_junk_chunk(text: str) -> bool:
+    content = text or ""
+    letters = len(re.findall(r"[A-Za-z]", content))
+    if letters < 80:
+        return True
+    if re.search(r"\bcontents\b", content, re.I) and content.count(".") >= 8:
+        return True
+    if content.count(".") >= 20 and len(re.findall(r"\d+", content)) >= 8:
+        return True
+    return False
+
+
+def _hit_blob(hit: dict[str, Any]) -> str:
+    meta = hit.get("metadata") or {}
+    return " ".join(
+        [
+            hit.get("content") or "",
+            str(meta.get("document_title") or ""),
+            str(meta.get("section") or ""),
+            str(meta.get("category") or ""),
+        ]
+    )
+
+
+def _on_topic(hit: dict[str, Any], question: str) -> bool:
+    q_topics = extract_topics(question)
+    if not q_topics:
+        return True
+    return bool(q_topics & extract_topics(_hit_blob(hit)))
+
+
+def _prefer_on_topic(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
+    if not hits:
+        return []
+    matching = [hit for hit in hits if _on_topic(hit, question)]
+    if matching:
+        return matching
+    if extract_topics(question):
+        return []
+    return hits
+
+
+def _ranked(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
+    terms = query_terms(question) - {"the", "and", "for", "what", "how", "tell", "line", "definition"}
+    q_topics = extract_topics(question)
+
+    def key(hit: dict[str, Any]) -> tuple:
+        blob = _hit_blob(hit)
+        topic_hit = 1 if q_topics and q_topics & extract_topics(blob) else 0
+        term_hit = 1 if terms and terms & query_terms(blob) else 0
+        score = float(hit.get("relevance_score") or 0)
+        return (-topic_hit, -term_hit, -score)
+
+    return sorted(hits, key=key)
 
 
 def _retrieval_query(question: str, history: list[dict[str, str]]) -> str:

@@ -51,7 +51,17 @@ class EmbeddingService:
         )
 
     def embed_query(self, text: str) -> list[float]:
-        return self.embed_texts([text])[0]
+        return self.embed_texts([self._format_query(text)])[0]
+
+    def _format_query(self, text: str) -> str:
+        name = (self.model_name or "").lower()
+        if "qwen" in name:
+            return (
+                "Instruct: Given a university policy question, retrieve the official "
+                "policy passage that answers it\n"
+                f"Query: {text}"
+            )
+        return text
 
     def _embed_timeout(self) -> int:
         return max(int(getattr(settings, "OLLAMA_TIMEOUT", 600)), 120)

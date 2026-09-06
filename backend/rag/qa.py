@@ -241,6 +241,8 @@ def sanitize_answer(text: str) -> str:
             break
         if _REASONING_LINE.match(stripped):
             continue
+        start = index
+        break
     cleaned = "\n".join(lines[start:]).strip()
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned or NOT_FOUND_MESSAGE
@@ -293,24 +295,20 @@ def _build_context(hits: list[dict[str, Any]]) -> str:
 
 
 def _extractive_answer(hits: list[dict[str, Any]]) -> str:
-    lines = [
-        "## Related policy information",
-        "",
-        "Based on the uploaded university documents, this is the relevant point:",
-        "",
-    ]
-    for index, hit in enumerate(hits[:4], start=1):
-        meta = hit.get("metadata") or {}
-        title = meta.get("document_title") or "Untitled policy"
-        page = meta.get("page_number")
-        page_label = f", page {page}" if isinstance(page, int) and page > 0 else ""
-        section = (meta.get("section") or "").strip()
-        section_label = f", {section}" if section else ""
-        excerpt = (hit.get("content") or "").strip()
-        if len(excerpt) > 220:
-            excerpt = excerpt[:220].rsplit(" ", 1)[0] + "…"
-        lines.append(f"{index}. **{title}{page_label}{section_label}:** {excerpt}")
-    return "\n".join(lines).strip()
+    sentences: list[str] = []
+    for hit in hits[:4]:
+        text = re.sub(r"\s+", " ", (hit.get("content") or "").strip())
+        for part in re.split(r"(?<=[.!?])\s+", text):
+            if len(part) < 40:
+                continue
+            sentences.append(part.strip())
+            if len(sentences) >= 3:
+                break
+        if len(sentences) >= 3:
+            break
+    if not sentences:
+        return NOT_FOUND_MESSAGE
+    return " ".join(sentences[:3])
 
 
 def _unique_sources(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:

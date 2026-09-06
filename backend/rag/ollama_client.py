@@ -31,6 +31,7 @@ def _chat_payload(system_prompt: str, user_prompt: str, stream: bool) -> dict:
     }
     if "qwen" in settings.OLLAMA_MODEL.lower():
         payload["think"] = False
+        payload["options"]["think"] = False
     return payload
 
 
