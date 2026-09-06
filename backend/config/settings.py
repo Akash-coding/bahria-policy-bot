@@ -187,14 +187,14 @@ if not DEBUG:
 
 # --- Policy Bot / RAG ---
 OLLAMA_BASE_URL = _env("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = _env("OLLAMA_MODEL", "gemma3:4b")
+OLLAMA_MODEL = _env("OLLAMA_MODEL", "qwen3:30b")
 OLLAMA_TIMEOUT = _env_int("OLLAMA_TIMEOUT", 600)
 OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.3)
 OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 4096)
 OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 400)
 
 EMBEDDING_PROVIDER = _env("EMBEDDING_PROVIDER", "ollama").lower()
-EMBEDDING_MODEL = _env("EMBEDDING_MODEL", "nomic-embed-text")
+EMBEDDING_MODEL = _env("EMBEDDING_MODEL", "qwen3-embedding:0.6b")
 
 _vector_path = _env("VECTOR_DB_PATH", str(PROJECT_ROOT / "data" / "chroma"))
 VECTOR_DB_PATH = Path(_vector_path)

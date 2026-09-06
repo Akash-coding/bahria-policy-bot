@@ -15,14 +15,14 @@ done
 
 pull() {
   echo "Pulling $1 ..."
-  curl -sfS --max-time 3600 -X POST "${OLLAMA_URL}/api/pull" \
+  curl -sfS --max-time 14400 -X POST "${OLLAMA_URL}/api/pull" \
     -H "Content-Type: application/json" \
     -d "{\"model\":\"$1\",\"stream\":false}"
   echo
 }
 
-pull gemma3:4b
-pull nomic-embed-text
+pull qwen3:30b
+pull qwen3-embedding:0.6b
 echo "Installed models:"
 curl -sfS "${OLLAMA_URL}/api/tags"
 echo
