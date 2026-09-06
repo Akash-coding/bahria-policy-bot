@@ -3,7 +3,7 @@ from unittest.mock import patch
 from rag.chunking import split_pages
 from rag.extraction import extract_pages
 from rag.prompts import NOT_FOUND_MESSAGE
-from rag.qa import _greeting_reply, _partial_visible, answer_question, sanitize_answer, stream_answer_events
+from rag.qa import _finalize_answer, _greeting_reply, _partial_visible, answer_question, sanitize_answer, stream_answer_events
 from django.test import SimpleTestCase
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -139,3 +139,23 @@ class AnswerCleanupTests(SimpleTestCase):
         )
         self.assertIn("## Fees", visible)
         self.assertNotIn("hidden", visible)
+
+    def test_finalize_keeps_streamed_wording(self):
+        prepared = {
+            "hits": [
+                {
+                    "content": "Students must maintain 75 percent attendance in each registered course to sit the final examination."
+                }
+            ],
+            "retrieval": "vector",
+        }
+        answer = _finalize_answer(
+            NOT_FOUND_MESSAGE,
+            prepared,
+            visible="Keep 75 percent attendance if you want to sit the final exam.",
+        )
+        self.assertEqual(
+            answer,
+            "Keep 75 percent attendance if you want to sit the final exam.",
+        )
+        self.assertNotIn("Here is the helpful point", answer)

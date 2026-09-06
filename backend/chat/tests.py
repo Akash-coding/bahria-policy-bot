@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -12,7 +13,7 @@ from rag.embeddings import get_embedding_service
 from rag.graphstore import get_policy_graph
 from rag.pipeline import process_document
 from rag.prompts import NOT_FOUND_MESSAGE
-from rag.qa import answer_question
+from rag.qa import answer_question, stream_answer_events
 from rag.retriever import _dedupe_hits
 from rag.vectorstore import get_vector_store
 
@@ -114,6 +115,17 @@ class RagAndChatTests(TestCase):
         self.assertTrue(result["sources"])
         self.assertNotEqual(result["answer"], NOT_FOUND_MESSAGE)
 
+    def test_stream_keeps_generated_answer(self):
+        text = "Keep at least 75 percent attendance so you can sit the final exam."
+        with patch("rag.qa.stream_generate", return_value=iter([text])):
+            events = list(stream_answer_events("What is the attendance policy?"))
+        done = [item for item in events if item["type"] == "done"][-1]
+        self.assertEqual(done["answer"], text)
+        self.assertNotIn("Here is the helpful point", done["answer"])
+        deltas = [item["text"] for item in events if item["type"] == "delta"]
+        self.assertTrue(deltas)
+        self.assertEqual(deltas[-1], done["answer"])
+
     def test_chat_api_with_mocked_ollama(self):
         with patch("chat.views.answer_question", return_value={
             "answer": "Students must maintain 75% attendance.",
@@ -144,8 +156,8 @@ class RagAndChatTests(TestCase):
                 format="json",
                 HTTP_ACCEPT="text/event-stream",
             )
-        self.assertEqual(response.status_code, 200)
-        body = b"".join(response.streaming_content).decode()
+            self.assertEqual(response.status_code, 200)
+            body = b"".join(response.streaming_content).decode()
         self.assertIn('"type": "done"', body)
         self.assertIn("alaikum", body.lower())
         self.assertIn("session_id", body)
@@ -160,8 +172,8 @@ class RagAndChatTests(TestCase):
                 {"question": "assalam o alaikum"},
                 HTTP_ACCEPT="text/event-stream",
             )
-        self.assertEqual(response.status_code, 200)
-        body = b"".join(response.streaming_content).decode()
+            self.assertEqual(response.status_code, 200)
+            body = b"".join(response.streaming_content).decode()
         self.assertIn('"type": "done"', body)
         self.assertIn("alaikum", body.lower())
 
@@ -189,6 +201,48 @@ class RagAndChatTests(TestCase):
         self.assertIn('"type": "delta"', body)
         self.assertIn('"type": "done"', body)
         self.assertIn("Attendance Policy", body)
+
+    def test_repeated_get_does_not_create_a_second_turn(self):
+        chunks = ["Keep 75 percent attendance to sit the final exam."]
+        with patch("rag.qa.stream_generate", return_value=iter(chunks)):
+            first = self.client.get(
+                "/api/ask/",
+                {"question": "What is the attendance policy?"},
+                HTTP_ACCEPT="text/event-stream",
+            )
+            self.assertEqual(first.status_code, 200)
+            body = b"".join(first.streaming_content).decode()
+        session_id = ""
+        for line in body.splitlines():
+            if not line.startswith("data:"):
+                continue
+            payload = json.loads(line.split("data:", 1)[1].strip())
+            if payload.get("session_id"):
+                session_id = payload["session_id"]
+                break
+        self.assertTrue(session_id)
+        with patch("rag.qa.stream_generate") as mocked_stream:
+            with patch("rag.qa.generate_answer") as mocked_generate:
+                second = self.client.get(
+                    "/api/ask/",
+                    {"question": "What is the attendance policy?", "session_id": session_id},
+                    HTTP_ACCEPT="text/event-stream",
+                )
+                self.assertEqual(second.status_code, 200)
+                replay = b"".join(second.streaming_content).decode()
+        mocked_stream.assert_not_called()
+        mocked_generate.assert_not_called()
+        self.assertIn("75 percent", replay)
+        history = self.client.get(f"/api/chat/history/?session_id={session_id}")
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(len(history.data["messages"]), 2)
+
+    def test_empty_sessions_are_hidden_from_sidebar(self):
+        created = self.client.post("/api/chat/sessions/", {}, format="json")
+        self.assertEqual(created.status_code, 201)
+        listed = self.client.get("/api/chat/sessions/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.data, [])
 
     def test_duplicate_chunks_are_removed(self):
         hits = [

@@ -95,7 +95,6 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
         return
 
     yield {"type": "status", "status": "generating"}
-    answer = ""
     last_visible = ""
     raw = ""
     try:
@@ -110,11 +109,9 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
         logger.warning("Ollama unavailable during stream; using a local fallback")
         answer = sanitize_answer(raw) if raw.strip() else ""
 
-    answer = _finalize_answer(answer, prepared)
+    answer = _finalize_answer(answer, prepared, visible=last_visible)
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
-    if answer != last_visible:
-        yield {"type": "delta", "text": answer}
     yield {
         "type": "done",
         "answer": answer,
@@ -132,17 +129,24 @@ def _ready(answer: str, found: bool) -> dict[str, Any]:
     }
 
 
-def _finalize_answer(answer: str, prepared: dict[str, Any]) -> str:
-    hits = prepared.get("hits") or []
+def _finalize_answer(answer: str, prepared: dict[str, Any], visible: str = "") -> str:
+    shown = (visible or "").strip()
     cleaned = (answer or "").strip()
-    if cleaned and NOT_FOUND_MESSAGE.lower() not in cleaned.lower():
+    shown_ok = bool(shown) and NOT_FOUND_MESSAGE.lower() not in shown.lower()
+    cleaned_ok = bool(cleaned) and NOT_FOUND_MESSAGE.lower() not in cleaned.lower()
+    if shown_ok:
+        # Keep the streamed wording. Only extend it if the final text is the same answer, just longer.
+        if cleaned_ok and (cleaned.startswith(shown) or shown.startswith(cleaned)):
+            return cleaned if len(cleaned) >= len(shown) else shown
+        return shown
+    if cleaned_ok:
         return cleaned
-    if hits:
-        if cleaned and NOT_FOUND_MESSAGE.lower() in cleaned.lower():
-            logger.info("Model refused despite retrieved policy excerpts; returning excerpts")
-        return _extractive_answer(hits)
     if prepared.get("retrieval") == "chat":
         return _small_talk_fallback()
+    hits = prepared.get("hits") or []
+    if hits:
+        logger.info("Model returned no usable answer; using a short policy summary")
+        return _extractive_answer(hits)
     return NOT_FOUND_MESSAGE
 
 

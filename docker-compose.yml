@@ -60,7 +60,7 @@ services:
       DJANGO_COOKIE_SECURE: "false"
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: qwen3:30b
-      OLLAMA_TEMPERATURE: "0.5"
+      OLLAMA_TEMPERATURE: "0.4"
       EMBEDDING_PROVIDER: ollama
       EMBEDDING_MODEL: qwen3-embedding:0.6b
       MEDIA_ROOT: /srv/data/documents
@@ -80,7 +80,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        FRONTEND_BUILD: "20260906c"
+        FRONTEND_BUILD: "20260906e"
     depends_on:
       - backend
     ports:

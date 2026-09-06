@@ -258,10 +258,45 @@ async function askStream(
   sessionId: string | null | undefined,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
+  let gotDone = false;
+  let lastDelta = "";
+  let liveSessionId = sessionId || "";
+  let streamStarted = false;
   try {
-    await askStreamSse(question, sessionId, onEvent);
-  } catch {
-    emitDone(await askJson(question, sessionId), onEvent);
+    await askStreamSse(question, sessionId, (event) => {
+      if (event.type === "meta" && event.session_id) {
+        liveSessionId = event.session_id;
+        streamStarted = true;
+      }
+      if (event.type === "delta") lastDelta = event.text;
+      if (event.type === "done") gotDone = true;
+      onEvent(event);
+    });
+  } catch (err) {
+    if (gotDone) return;
+    if (lastDelta) {
+      onEvent({
+        type: "done",
+        session_id: liveSessionId,
+        answer: lastDelta,
+        sources: [],
+        found: true,
+        message: {
+          id: Date.now(),
+          role: "assistant",
+          content: lastDelta,
+          sources: [],
+          found: true,
+          created_at: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+    // The stream already created a user turn. Do not start a second generation.
+    if (streamStarted) {
+      throw err instanceof Error ? err : new Error("Could not get an answer.");
+    }
+    emitDone(await askJson(question, liveSessionId || sessionId), onEvent);
   }
 }
 
@@ -285,6 +320,7 @@ async function askStreamSse(
   let buffer = "";
   let completed = false;
   let lastDelta = "";
+  let liveSessionId = sessionId || "";
 
   const consume = (chunk: string) => {
     const parts = chunk.split("\n\n");
@@ -306,6 +342,7 @@ async function askStreamSse(
       if (event.type === "error") {
         throw new Error(event.detail || "Could not get an answer.");
       }
+      if (event.type === "meta" && event.session_id) liveSessionId = event.session_id;
       if (event.type === "delta") lastDelta = event.text;
       if (event.type === "close") continue;
       onEvent(event);
@@ -327,7 +364,7 @@ async function askStreamSse(
   if (lastDelta) {
     onEvent({
       type: "done",
-      session_id: sessionId || "",
+      session_id: liveSessionId,
       answer: lastDelta,
       sources: [],
       found: true,

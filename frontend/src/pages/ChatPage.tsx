@@ -80,11 +80,14 @@ export function ChatPage() {
   );
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const busyRef = useRef(false);
 
   const loadSessions = async () => {
     try {
       const rows = await api.sessions();
-      setSessions(Array.isArray(rows) ? rows : []);
+      setSessions(
+        Array.isArray(rows) ? rows.filter((item) => (item.message_count ?? 1) > 0) : [],
+      );
     } catch {
       setSessions([]);
     }
@@ -112,19 +115,18 @@ export function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [question]);
 
-  const startNewChat = async () => {
+  const startNewChat = () => {
     setError("");
-    const created = await api.createSession();
-    setSessionId(created.id);
+    setSessionId(null);
     setMessages([]);
-    await loadSessions();
     if (window.innerWidth <= 860) setSidebarOpen(false);
     inputRef.current?.focus();
   };
 
   const submit = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busyRef.current) return;
+    busyRef.current = true;
     setError("");
     setQuestion("");
     setBusy(true);
@@ -161,48 +163,40 @@ export function ChatPage() {
         }
         if (event.type === "done") {
           if (event.session_id) setSessionId(event.session_id);
-          setMessages((current) => {
-            const without = current.filter(
-              (item) => item.id !== optimistic.id && item.id !== streamId,
-            );
-            const userMessage = { ...optimistic, id: event.message?.id ? event.message.id - 1 : optimistic.id };
-            const assistantMessage = event.message || {
-              id: streamId,
-              role: "assistant" as const,
-              content: event.answer,
-              sources: event.sources || [],
-              found: event.found,
-              created_at: new Date().toISOString(),
-            };
-            return [...without, userMessage, assistantMessage];
-          });
+          setMessages((current) =>
+            current.map((item) => {
+              if (item.id !== streamId) return item;
+              const streamed = (item.content || "").trim();
+              const incoming = (event.answer || "").trim();
+              return {
+                ...item,
+                id: event.message?.id || item.id,
+                role: "assistant" as const,
+                content: streamed || incoming,
+                sources: event.sources || event.message?.sources || [],
+                found: event.found,
+                streaming: false,
+              };
+            }),
+          );
         }
       });
-      await loadSessions();
+      void loadSessions();
     } catch (err) {
-      try {
-        const fallback = await api.ask(trimmed, sessionId);
-        setSessionId(fallback.session_id);
-        setMessages((current) => {
-          const without = current.filter((item) => item.id !== optimistic.id && !item.streaming);
-          return [
-            ...without,
-            { ...optimistic, id: fallback.message.id - 1 },
-            fallback.message,
-          ];
-        });
-        await loadSessions();
-      } catch {
-        setError(err instanceof Error ? err.message : "Could not get an answer.");
-        setMessages((current) =>
-          current.map((item) =>
-            item.streaming
-              ? { ...item, streaming: false, content: item.content || "The assistant could not finish that reply. Please try again." }
-              : item,
-          ),
-        );
-      }
+      setError(err instanceof Error ? err.message : "Could not get an answer.");
+      setMessages((current) =>
+        current.map((item) =>
+          item.streaming
+            ? {
+                ...item,
+                streaming: false,
+                content: item.content || "The assistant could not finish that reply. Please try again.",
+              }
+            : item,
+        ),
+      );
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -249,7 +243,7 @@ export function ChatPage() {
           </button>
         </div>
 
-        <button className="new-chat-btn" onClick={() => void startNewChat()}>
+        <button className="new-chat-btn" onClick={startNewChat}>
           <PlusIcon />
           New chat
         </button>
@@ -306,7 +300,7 @@ export function ChatPage() {
             <p>Policy assistant</p>
           </div>
           <ThemeToggle compact />
-          <button className="icon-btn mobile-only" title="New chat" onClick={() => void startNewChat()}>
+          <button className="icon-btn mobile-only" title="New chat" onClick={startNewChat}>
             <PlusIcon />
           </button>
         </header>

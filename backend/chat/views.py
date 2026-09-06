@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from django.db.models import Count
 from django.http import StreamingHttpResponse
@@ -109,11 +110,68 @@ def _visible_sessions(request):
     return ChatSession.objects.filter(anonymous_key=anon_key, user__isnull=True)
 
 
+def _recent_assistant_for_question(session: ChatSession, question: str) -> ChatMessage | None:
+    latest = list(session.messages.order_by("-created_at")[:2])
+    if len(latest) < 2:
+        return None
+    assistant, user_message = latest[0], latest[1]
+    if assistant.role != MessageRole.ASSISTANT or user_message.role != MessageRole.USER:
+        return None
+    if (user_message.content or "").strip() != question:
+        return None
+    age = (timezone.now() - assistant.created_at).total_seconds()
+    if age > 45:
+        return None
+    return assistant
+
+
+def _wait_for_assistant(session: ChatSession, user_message: ChatMessage) -> ChatMessage | None:
+    deadline = time.time() + 6
+    while time.time() < deadline:
+        assistant = (
+            session.messages.filter(role=MessageRole.ASSISTANT, created_at__gte=user_message.created_at)
+            .order_by("created_at")
+            .first()
+        )
+        if assistant:
+            return assistant
+        time.sleep(0.25)
+    return None
+
+
+def _result_from_message(message: ChatMessage) -> dict:
+    return {
+        "answer": message.content,
+        "sources": message.sources or [],
+        "found": message.found,
+    }
+
+
 def _begin_turn(request, payload=None):
     serializer = ChatAskSerializer(data=payload if payload is not None else request.data)
     serializer.is_valid(raise_exception=True)
     question = serializer.validated_data["question"].strip()
     session = _get_or_create_session(request, serializer.validated_data.get("session_id"))
+
+    replay = _recent_assistant_for_question(session, question)
+    if replay:
+        return session, question, [], replay
+
+    last = session.messages.order_by("-created_at").first()
+    if (
+        last
+        and last.role == MessageRole.USER
+        and (last.content or "").strip() == question
+        and (timezone.now() - last.created_at).total_seconds() < 90
+    ):
+        waiting = _wait_for_assistant(session, last)
+        if waiting:
+            return session, question, [], waiting
+        history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in session.messages.exclude(id=last.id).order_by("created_at")
+        ]
+        return session, question, history, None
 
     user_message = ChatMessage.objects.create(
         session=session,
@@ -128,7 +186,7 @@ def _begin_turn(request, payload=None):
         {"role": msg.role, "content": msg.content}
         for msg in session.messages.exclude(id=user_message.id).order_by("created_at")
     ]
-    return session, question, history
+    return session, question, history, None
 
 
 def _attach_anon_cookie(request, response, session: ChatSession):
@@ -167,7 +225,19 @@ def chat_ask(request):
             "session_id": request.query_params.get("session_id") or None,
         }
     logger.info("Chat reply started (%s)", request.method)
-    session, question, history = _begin_turn(request, payload)
+    session, question, history, replay = _begin_turn(request, payload)
+    if replay:
+        result = _result_from_message(replay)
+        response = Response(
+            {
+                "session_id": str(session.id),
+                "message": ChatMessageSerializer(replay).data,
+                "answer": result["answer"],
+                "sources": result["sources"],
+                "found": result["found"],
+            }
+        )
+        return _attach_anon_cookie(request, response, session)
 
     try:
         result = answer_question(question, history)
@@ -212,10 +282,24 @@ def chat_ask_stream(request):
             "session_id": request.query_params.get("session_id") or None,
         }
     logger.info("Chat stream started (%s)", request.method)
-    session, question, history = _begin_turn(request, payload)
+    session, question, history, replay = _begin_turn(request, payload)
 
     def events():
         yield _sse({"type": "meta", "session_id": str(session.id), "status": "retrieving"})
+        if replay:
+            result = _result_from_message(replay)
+            yield _sse(
+                {
+                    "type": "done",
+                    "session_id": str(session.id),
+                    "answer": result["answer"],
+                    "sources": result["sources"],
+                    "found": result["found"],
+                    "message": ChatMessageSerializer(replay).data,
+                }
+            )
+            yield _sse({"type": "close"})
+            return
         try:
             for event in stream_answer_events(question, history):
                 if event.get("type") == "done":
@@ -260,7 +344,11 @@ def session_list_create(request):
         )
         return Response(ChatSessionSerializer(session).data, status=status.HTTP_201_CREATED)
 
-    sessions = _visible_sessions(request)
+    sessions = (
+        _visible_sessions(request)
+        .annotate(message_count=Count("messages"))
+        .filter(message_count__gt=0)
+    )
     return Response(ChatSessionSerializer(sessions, many=True).data)
 
 
