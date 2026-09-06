@@ -25,7 +25,7 @@ def _chat_payload(system_prompt: str, user_prompt: str, stream: bool) -> dict:
         "keep_alive": "24h",
         "options": {
             "temperature": settings.OLLAMA_TEMPERATURE,
-            "num_predict": getattr(settings, "OLLAMA_NUM_PREDICT", 400),
+            "num_predict": getattr(settings, "OLLAMA_NUM_PREDICT", 1024),
             "num_ctx": getattr(settings, "OLLAMA_NUM_CTX", 4096),
         },
     }

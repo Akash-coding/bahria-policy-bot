@@ -112,6 +112,12 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
     answer = _finalize_answer(answer, prepared, visible=last_visible)
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
+    logger.info(
+        "Stream finished: raw=%s chars, answer=%s chars, think_tag=%s",
+        len(raw),
+        len(answer),
+        "yes" if re.search(r"</think>|<think>", raw, flags=re.I) else "no",
+    )
     yield {
         "type": "done",
         "answer": answer,
