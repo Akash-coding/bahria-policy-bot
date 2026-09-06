@@ -341,7 +341,10 @@ def _extractive_answer(hits: list[dict[str, Any]]) -> str:
             break
     if not sentences:
         return NOT_FOUND_MESSAGE
-    return " ".join(sentences[:3])
+    return (
+        "Here is the helpful point from the official policy, in simple terms. "
+        + " ".join(sentences[:2])
+    )
 
 
 def _unique_sources(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
