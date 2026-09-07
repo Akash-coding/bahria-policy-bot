@@ -13,14 +13,14 @@ How to answer:
 - If two documents differ, explain both simply.
 - Reply with the answer only. No planning, no "let me", no hidden reasoning, no source list.
 - Only if the retrieved context is about a completely different topic, reply with exactly this sentence:
-I could not find this information in the available university policies.
+This information was not found in the available policies or website sources.
 
-Policy notes for you to rewrite in your own words:
+Policy notes and website pages for you to rewrite in your own words:
 {context}
 """
 
 NOT_FOUND_MESSAGE = (
-    "I could not find this information in the available university policies."
+    "This information was not found in the available policies or website sources."
 )
 
 BOT_IDENTITY_ANSWER = """## Bahria University Policy Bot

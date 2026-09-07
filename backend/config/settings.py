@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "accounts",
     "documents",
+    "scraper",
     "chat",
     "rag",
     "api",
@@ -216,6 +217,9 @@ GRAPH_EXPAND_LIMIT = _env_int("GRAPH_EXPAND_LIMIT", 6)
 MAX_UPLOAD_MB = _env_int("MAX_UPLOAD_MB", 20)
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".txt"}
 PROCESS_DOCUMENTS_ASYNC = _env_bool("PROCESS_DOCUMENTS_ASYNC", True)
+SCRAPE_MAX_PAGES = _env_int("SCRAPE_MAX_PAGES", 80)
+SCRAPE_MAX_DEPTH = _env_int("SCRAPE_MAX_DEPTH", 5)
+SCRAPE_TIMEOUT = _env_int("SCRAPE_TIMEOUT", 20)
 
 LOGGING = {
     "version": 1,
@@ -237,6 +241,6 @@ LOGGING = {
         "documents": {"level": "INFO", "handlers": ["console"], "propagate": False},
         "rag": {"level": "INFO", "handlers": ["console"], "propagate": False},
         "chat": {"level": "INFO", "handlers": ["console"], "propagate": False},
-        "accounts": {"level": "INFO", "handlers": ["console"], "propagate": False},
+        "scraper": {"level": "INFO", "handlers": ["console"], "propagate": False},
     },
 }

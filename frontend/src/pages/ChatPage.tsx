@@ -43,7 +43,7 @@ function PolicySources({ sources }: { sources: Source[] }) {
   const unique: Source[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
-    const key = `${source.document}::${source.page ?? ""}`;
+    const key = source.source_url || `${source.source_type || ""}::${source.document}::${source.page ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(source);
@@ -54,15 +54,28 @@ function PolicySources({ sources }: { sources: Source[] }) {
       <summary>
         Sources <span>{unique.length}</span>
       </summary>
-      <ul>
-        {unique.map((source, index) => (
-          <li key={`${source.document}-${source.page}-${index}`}>
-            <strong>{source.document}</strong>
-            {source.section ? `, ${source.section}` : ""}
-            {source.page ? `, page ${source.page}` : ""}
-          </li>
-        ))}
-      </ul>
+      <ol>
+        {unique.map((source, index) => {
+          const kind = source.source_type || "Policy Document";
+          const label = source.source_url || source.document;
+          return (
+            <li key={`${label}-${source.page}-${index}`}>
+              <strong>{kind}:</strong>{" "}
+              {source.source_url ? (
+                <a href={source.source_url} target="_blank" rel="noreferrer">
+                  {source.source_url}
+                </a>
+              ) : (
+                <>
+                  {source.document}
+                  {source.section ? `, ${source.section}` : ""}
+                  {source.page ? `, page ${source.page}` : ""}
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ol>
     </details>
   );
 }

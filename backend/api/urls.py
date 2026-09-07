@@ -11,5 +11,6 @@ urlpatterns = [
     path("dashboard/stats/", views.dashboard_stats, name="dashboard-stats"),
     path("auth/", include("accounts.urls")),
     path("documents/", include("documents.urls")),
+    path("scraper/", include("scraper.urls")),
     path("chat/", include("chat.urls")),
 ]

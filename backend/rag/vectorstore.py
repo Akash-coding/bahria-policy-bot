@@ -101,6 +101,17 @@ class LocalVectorStore:
         self._items = keep
         self._save()
 
+    def delete_matching(self, **meta_equals) -> None:
+        items = self._load()
+        keep = {}
+        for key, value in items.items():
+            meta = value.get("metadata") or {}
+            if meta_equals and all(str(meta.get(name)) == str(expected) for name, expected in meta_equals.items()):
+                continue
+            keep[key] = value
+        self._items = keep
+        self._save()
+
     def query(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
         items = list(self._load().values())
         if not items:

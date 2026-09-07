@@ -682,10 +682,10 @@ button {
   font-size: 0.72rem;
 }
 
-.source-dropdown ul {
+.source-dropdown ul,
+.source-dropdown ol {
   margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
+  padding: 0 0 0 18px;
   display: grid;
   gap: 6px;
 }
@@ -693,6 +693,13 @@ button {
 .source-dropdown li {
   color: var(--ink-soft);
   font-size: 0.86rem;
+}
+
+.source-dropdown a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
 }
 
 .error {
@@ -1157,6 +1164,46 @@ td {
 .badge.failed {
   background: #fef3f2;
   color: var(--danger);
+}
+
+.badge.starting,
+.badge.discovering,
+.badge.scraping,
+.badge.saving {
+  background: #fffaeb;
+  color: var(--warn);
+}
+
+.scraper-form {
+  align-items: center;
+}
+
+.muted-url {
+  color: var(--muted);
+  font-size: 0.78rem;
+  word-break: break-all;
+  margin-top: 4px;
+}
+
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.row-active td {
+  background: color-mix(in srgb, var(--gold, #d4af37) 8%, transparent);
 }
 
 .status-dot {

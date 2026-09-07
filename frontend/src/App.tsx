@@ -6,6 +6,7 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import { AdminDocuments } from "./pages/AdminDocuments";
 import { AdminDocumentDetail } from "./pages/AdminDocumentDetail";
 import { AdminUpload } from "./pages/AdminUpload";
+import { AdminScraper } from "./pages/AdminScraper";
 import { AdminChats } from "./pages/AdminChats";
 import { ThemeToggle } from "./theme";
 
@@ -42,6 +43,7 @@ function AdminLayout() {
           </NavLink>
           <NavLink to="/console/chats">User chats</NavLink>
           <NavLink to="/console/documents">Documents</NavLink>
+          <NavLink to="/console/scraper">Website scraper</NavLink>
           <NavLink to="/console/upload">Upload policy</NavLink>
           <NavLink to="/">Open chatbot</NavLink>
         </nav>
@@ -67,6 +69,7 @@ function AdminLayout() {
           <Route path="chats" element={<AdminChats />} />
           <Route path="documents" element={<AdminDocuments />} />
           <Route path="documents/:id" element={<AdminDocumentDetail />} />
+          <Route path="scraper" element={<AdminScraper />} />
           <Route path="upload" element={<AdminUpload />} />
         </Routes>
       </main>

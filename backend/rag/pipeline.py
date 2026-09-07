@@ -98,6 +98,8 @@ def _index_document(document: Document) -> None:
             "chunk_index": chunk.chunk_index,
             "section": chunk.section or "",
             "file_type": document.file_type,
+            "source_type": {"pdf": "pdf", "docx": "word", "txt": "text"}.get(document.file_type, "policy"),
+            "source_url": "",
         }
         records.append(
             DocumentChunk(

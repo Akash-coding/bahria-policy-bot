@@ -349,12 +349,18 @@ def _build_context(hits: list[dict[str, Any]]) -> str:
     used = 0
     for index, hit in enumerate(hits, start=1):
         meta = hit.get("metadata") or {}
-        title = meta.get("document_title") or "Untitled policy"
+        title = meta.get("document_title") or "Untitled source"
+        source_type = _source_type_label(meta)
+        url = (meta.get("source_url") or "").strip()
         page = meta.get("page_number")
-        page_label = f"page {page}" if isinstance(page, int) and page > 0 else "page unknown"
+        page_label = f"page {page}" if isinstance(page, int) and page > 0 else ""
         section = (meta.get("section") or "").strip()
         version = meta.get("version") or ""
-        header = f"[{index}] Document: {title} | {page_label}"
+        header = f"[{index}] {source_type}: {title}"
+        if url:
+            header += f" | {url}"
+        elif page_label:
+            header += f" | {page_label}"
         if section:
             header += f" | section: {section}"
         if version:
@@ -390,6 +396,22 @@ def _extractive_answer(hits: list[dict[str, Any]]) -> str:
     )
 
 
+def _source_type_label(meta: dict[str, Any]) -> str:
+    source_type = (meta.get("source_type") or "").lower()
+    url = (meta.get("source_url") or "").strip()
+    if url:
+        if source_type == "pdf":
+            return "PDF"
+        return "Website"
+    if source_type == "pdf":
+        return "PDF"
+    if source_type == "word":
+        return "Word Document"
+    if source_type == "text":
+        return "Text"
+    return "Policy Document"
+
+
 def _unique_sources(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[tuple] = set()
     sources: list[dict[str, Any]] = []
@@ -398,20 +420,25 @@ def _unique_sources(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
         page = meta.get("page_number")
         if page == -1:
             page = None
-        key = (meta.get("document_id"), page, meta.get("chunk_index"))
+        url = (meta.get("source_url") or "").strip()
+        key = (meta.get("document_id"), url, page, meta.get("chunk_index"))
         if key in seen:
             continue
         seen.add(key)
+        source_type = _source_type_label(meta)
+        title = meta.get("document_title") or "Untitled source"
         sources.append(
             {
                 "document_id": meta.get("document_id"),
-                "document": meta.get("document_title") or "Untitled policy",
+                "document": title,
                 "category": meta.get("category"),
                 "page": page,
                 "section": (meta.get("section") or "").strip() or None,
                 "chunk_index": meta.get("chunk_index"),
                 "relevance_score": round(float(hit.get("relevance_score") or 0), 4),
                 "excerpt": (hit.get("content") or "")[:280],
+                "source_type": source_type,
+                "source_url": url or None,
             }
         )
     return sources

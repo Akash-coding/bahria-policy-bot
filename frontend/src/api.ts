@@ -17,6 +17,8 @@ export type Source = {
   chunk_index?: number;
   relevance_score?: number;
   excerpt?: string;
+  source_type?: string;
+  source_url?: string | null;
 };
 
 export type ChatMessage = {
@@ -104,6 +106,36 @@ export type DashboardStats = {
   };
 };
 
+export type ScrapedPageRecord = {
+  id: number;
+  url: string;
+  title: string;
+  source_url: string;
+  file_type: string;
+  status: string;
+  chunk_count: number;
+  content_hash: string;
+  scraped_at: string;
+  error_message: string;
+};
+
+export type WebsiteRecord = {
+  id: number;
+  seed_url: string;
+  domain: string;
+  title: string;
+  status: string;
+  status_label: string;
+  progress_detail: string;
+  page_count: number;
+  chunk_count: number;
+  error_message: string;
+  last_scraped_at: string | null;
+  created_at: string;
+  updated_at: string;
+  pages?: ScrapedPageRecord[];
+};
+
 let csrfToken = "";
 
 const PROD_API_FILES: Record<string, string> = {
@@ -120,6 +152,8 @@ const PROD_API_FILES: Record<string, string> = {
   "/documents/": "/assets/vendor-catalog.js",
   "/documents/categories/": "/assets/vendor-taxonomy.js",
   "/documents/file/": "/assets/vendor-source.js",
+  "/scraper/": "/assets/vendor-crawl.js",
+  "/scraper/item/": "/assets/vendor-crawl-item.js",
   "/chat/admin/sessions/": "/assets/vendor-inbox.js",
 };
 
@@ -432,4 +466,14 @@ export const api = {
   adminSessions: () => request<AdminChatSession[]>("/api/chat/admin/sessions/"),
   adminSession: (id: string) =>
     request<AdminChatSession>(`/api/chat/admin/sessions/?session_id=${id}`),
+  websites: () => request<WebsiteRecord[]>("/api/scraper/"),
+  website: (id: number) => request<WebsiteRecord>(`/api/scraper/item/?id=${id}`),
+  scrapeWebsite: (url: string) =>
+    request<WebsiteRecord>("/api/scraper/", { method: "POST", body: JSON.stringify({ url }) }),
+  rescrapeWebsite: (id: number) =>
+    request<WebsiteRecord>(`/api/scraper/item/?id=${id}&action=rescrape`, { method: "POST" }),
+  reindexWebsite: (id: number) =>
+    request<WebsiteRecord>(`/api/scraper/item/?id=${id}&action=reindex`, { method: "POST" }),
+  deleteWebsite: (id: number) =>
+    request<void>(`/api/scraper/item/?id=${id}`, { method: "DELETE" }),
 };
