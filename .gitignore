@@ -44,6 +44,9 @@ backend/data/
 .DS_Store
 Thumbs.db
 
+# Hugging Face model cache
+.cache/
+
 # Docker
 docker-data/
 

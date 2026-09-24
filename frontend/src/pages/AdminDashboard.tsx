@@ -32,7 +32,7 @@ export function AdminDashboard() {
       <div className="admin-page-head">
         <div>
           <h1 className="page-title">Operations overview</h1>
-          <p className="page-subtitle">Knowledge base, local model status, and live chat traffic.</p>
+          <p className="page-subtitle">Knowledge base, Groq model status, and live chat traffic.</p>
         </div>
         <Link className="btn btn-navy" to="/console/chats">
           Review user chats
@@ -47,13 +47,13 @@ export function AdminDashboard() {
         ))}
       </div>
       <div className="panel">
-        <h2>Local AI status</h2>
+        <h2>Groq AI status</h2>
         <p>
-          <span className={`status-dot ${stats.ollama.reachable ? "ok" : "bad"}`} />{" "}
-          Ollama {stats.ollama.reachable ? "is online" : "is offline"} · {stats.ollama.model}{" "}
-          {stats.ollama.model_available ? "is ready" : "was not found"}
+          <span className={`status-dot ${stats.groq.reachable ? "ok" : "bad"}`} />{" "}
+          Groq {stats.groq.reachable ? "is online" : "is offline"} · {stats.groq.model}{" "}
+          {stats.groq.model_available ? "is ready" : "was not found"}
         </p>
-        {stats.ollama.error ? <div className="error">{stats.ollama.error}</div> : null}
+        {stats.groq.error ? <div className="error">{stats.groq.error}</div> : null}
       </div>
     </div>
   );

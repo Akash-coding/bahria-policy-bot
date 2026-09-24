@@ -187,15 +187,15 @@ if not DEBUG:
     X_FRAME_OPTIONS = "DENY"
 
 # --- Policy Bot / RAG ---
-OLLAMA_BASE_URL = _env("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = _env("OLLAMA_MODEL", "qwen3:30b")
-OLLAMA_TIMEOUT = _env_int("OLLAMA_TIMEOUT", 600)
-OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.4)
-OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 4096)
-OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 1024)
+GROQ_API_KEY = _env("GROQ_API_KEY", "")
+GROQ_BASE_URL = _env("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+GROQ_MODEL = _env("GROQ_MODEL", "qwen/qwen3.8-27b")
+GROQ_TIMEOUT = _env_int("GROQ_TIMEOUT", 120)
+GROQ_TEMPERATURE = _env_float("GROQ_TEMPERATURE", 0.4)
+GROQ_MAX_TOKENS = _env_int("GROQ_MAX_TOKENS", 800)
 
-EMBEDDING_PROVIDER = _env("EMBEDDING_PROVIDER", "ollama").lower()
-EMBEDDING_MODEL = _env("EMBEDDING_MODEL", "qwen3-embedding:0.6b")
+EMBEDDING_PROVIDER = _env("EMBEDDING_PROVIDER", "sentence-transformers").lower()
+EMBEDDING_MODEL = _env("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 _vector_path = _env("VECTOR_DB_PATH", str(PROJECT_ROOT / "data" / "chroma"))
 VECTOR_DB_PATH = Path(_vector_path)

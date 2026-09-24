@@ -6,7 +6,8 @@ from typing import Any
 
 from django.conf import settings
 
-from .ollama_client import OllamaError, generate_answer, stream_generate
+from .embeddings import EmbeddingError
+from .groq_client import GroqError, generate_answer, stream_generate
 from .prompts import (
     BOT_IDENTITY_ANSWER,
     GREETING_SYSTEM_PROMPT,
@@ -15,6 +16,8 @@ from .prompts import (
     USER_PROMPT_TEMPLATE,
 )
 from .retriever import retrieve_policy_chunks
+from .topics import extract_topics
+from .vectorstore import VectorStoreError
 
 logger = logging.getLogger("rag")
 
@@ -23,6 +26,10 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
     question = (question or "").strip()
     if not question:
         return _ready("Please ask a question about Bahria University policies.", found=False)
+
+    question, declined = _continue_from_short_reply(question, history or [])
+    if declined:
+        return _ready(declined, found=True)
 
     identity = _identity_reply(question)
     if identity:
@@ -38,7 +45,11 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
             "retrieval": "chat",
         }
 
-    relevant, method = retrieve_policy_chunks(question, history or [])
+    try:
+        relevant, method = retrieve_policy_chunks(question, history or [])
+    except (EmbeddingError, VectorStoreError, OSError):
+        logger.exception("Embedding failed while retrieving policy chunks")
+        return _ready(NOT_FOUND_MESSAGE, found=False)
     if not relevant:
         logger.info("No relevant policy chunks found for question")
         return _ready(NOT_FOUND_MESSAGE, found=False)
@@ -60,9 +71,11 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
 
 def answer_question(question: str, history: list[dict[str, str]] | None = None) -> dict[str, Any]:
     prepared = prepare_answer(question, history)
+    follow_topic, _declined = _continue_from_short_reply(question, history or [])
     if prepared["mode"] == "ready":
+        answer = _ensure_follow_up(follow_topic, prepared["answer"])
         return {
-            "answer": prepared["answer"],
+            "answer": answer,
             "sources": prepared["sources"],
             "found": prepared["found"],
         }
@@ -70,10 +83,10 @@ def answer_question(question: str, history: list[dict[str, str]] | None = None) 
         answer = sanitize_answer(
             generate_answer(prepared["system_prompt"], prepared["user_prompt"])
         )
-    except OllamaError:
-        logger.warning("Ollama unavailable; using a local fallback")
+    except GroqError as exc:
+        logger.warning("Groq unavailable; using a local fallback: %s", exc)
         answer = ""
-    answer = _finalize_answer(answer, prepared)
+    answer = _ensure_follow_up(follow_topic, _finalize_answer(answer, prepared))
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
     return {
@@ -84,11 +97,13 @@ def answer_question(question: str, history: list[dict[str, str]] | None = None) 
 
 
 def stream_answer_events(question: str, history: list[dict[str, str]] | None = None):
-    prepared = prepare_answer(question, (history or [])[-4:])
+    recent = (history or [])[-4:]
+    prepared = prepare_answer(question, recent)
+    follow_topic, _declined = _continue_from_short_reply(question, recent)
     if prepared["mode"] == "ready":
         yield {
             "type": "done",
-            "answer": prepared["answer"],
+            "answer": _ensure_follow_up(follow_topic, prepared["answer"]),
             "sources": prepared["sources"],
             "found": prepared["found"],
         }
@@ -105,11 +120,13 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
                 last_visible = visible
                 yield {"type": "delta", "text": visible}
         answer = sanitize_answer(raw) if raw.strip() else ""
-    except OllamaError:
-        logger.warning("Ollama unavailable during stream; using a local fallback")
+    except GroqError as exc:
+        logger.warning("Groq unavailable during stream; using a local fallback: %s", exc)
         answer = sanitize_answer(raw) if raw.strip() else ""
 
-    answer = _finalize_answer(answer, prepared, visible=last_visible)
+    answer = _ensure_follow_up(
+        follow_topic, _finalize_answer(answer, prepared, visible=last_visible)
+    )
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
     logger.info(
@@ -133,6 +150,150 @@ def _ready(answer: str, found: bool) -> dict[str, Any]:
         "sources": [],
         "found": found,
     }
+
+
+_SUGGESTED_SPLIT = re.compile(
+    r"\n*\s*(?:\*\*\s*)?Suggested question\s*:?\s*(?:\*\*\s*)?",
+    re.I,
+)
+_SHORT_YES = re.compile(
+    r"^\s*(?:yes|yep|yeah|yup|sure|ok|okay|please|go ahead|of course|"
+    r"yes please|yes tell me|yes,? please|"
+    r"han+|haan+|ji+|haan?\s*ji|theek hai|bilkul)"
+    r"[\s.!,]*$",
+    re.I,
+)
+_SHORT_NO = re.compile(
+    r"^\s*(?:no|nope|nah|not now|no thanks|no thank you|"
+    r"nahi+|na+|nahi chahiye|mat batao)"
+    r"[\s.!,]*$",
+    re.I,
+)
+
+
+def _one_follow_up_question(text: str) -> str:
+    line = (text or "").strip().strip("*").strip()
+    line = line.splitlines()[0].strip() if line else ""
+    mark = line.find("?")
+    if mark >= 0:
+        line = line[: mark + 1]
+    line = re.sub(r"\s+", " ", line).strip()
+    if line and not line.endswith("?"):
+        line = line.rstrip(".") + "?"
+    return line[:140]
+
+
+def _last_offered_question(history: list[dict[str, str]]) -> str:
+    for item in reversed(history or []):
+        if (item.get("role") or "") != "assistant":
+            continue
+        questions = re.findall(r"([^?\n][^?\n]{8,120}\?)", item.get("content") or "")
+        if questions:
+            return _one_follow_up_question(questions[-1])
+    return ""
+
+
+def _continue_from_short_reply(
+    question: str, history: list[dict[str, str]]
+) -> tuple[str, str | None]:
+    if _SHORT_YES.match(question):
+        offered = _last_offered_question(history)
+        if offered:
+            logger.info("User accepted the previous follow-up")
+            return offered, None
+        return question, (
+            "Which handbook policy should I explain for you? "
+            "Attendance, exams, fees, or leaves?"
+        )
+    if _SHORT_NO.match(question):
+        return question, (
+            "Alright. Tell me another handbook topic whenever you are ready, "
+            "such as attendance, exams, fees, or leaves."
+        )
+    return question, None
+
+
+def _follow_up_from_query(question: str, answer: str) -> str:
+    topics = extract_topics(question or "", answer or "")
+    lowered_q = (question or "").lower()
+    lowered_a = (answer or "").lower()
+    percents = re.findall(r"(\d+(?:\.\d+)?)\s*%", answer or "")
+    gpas = re.findall(r"(\d+(?:\.\d+)?)\s*(?:gpa|cgpa)", lowered_a)
+    days = re.findall(r"(\d+)\s+days?", lowered_a)
+    topic = sorted(topics)[0] if topics else ""
+
+    if _IDENTITY.search(question or "") and not _POLICY_HINT.search(question or ""):
+        return "Which handbook policy should I explain first?"
+    if _is_small_talk(question or ""):
+        if re.search(r"thank", lowered_q):
+            return "Should I also explain a related deadline from the handbook?"
+        if re.search(r"bye|goodbye|see you", lowered_q):
+            return "Before you go, should I look up one handbook rule?"
+        if re.search(r"how are you", lowered_q):
+            return "Which campus policy can I help you with right now?"
+        return "Would you like the attendance rule, or a different handbook policy?"
+    if NOT_FOUND_MESSAGE.lower() in lowered_a:
+        if topic:
+            return f"Would you like me to look up a related {topic} rule from the handbook?"
+        return "Would you like to ask this as a specific attendance, exam, fee, or leave policy?"
+    if percents and topic:
+        return f"What happens if this {topic} requirement falls below {percents[0]}%?"
+    if gpas:
+        return f"What if my GPA drops below {gpas[0]}?"
+    if days and topic:
+        return f"How do I apply or report this {topic} issue within those {days[0]} days?"
+    if re.search(r"\b(what is|what's|define|meaning)\b", lowered_q) and topic:
+        return f"How is the {topic} rule applied if a student misses it?"
+    if re.search(r"\b(how|procedure|apply|process)\b", lowered_q) and topic:
+        return f"What conditions must be met before this {topic} request is approved?"
+    if re.search(r"\b(if i|happen|penalty|fail|below|short)\b", lowered_q) and topic:
+        return f"What can I do to stay within the {topic} policy?"
+    if topic:
+        return f"Would you like the next step related to this {topic} policy?"
+    snippet = re.sub(r"\s+", " ", (question or "").strip()).rstrip("?.!")
+    if len(snippet) > 70:
+        snippet = snippet[:67].rsplit(" ", 1)[0]
+    if snippet:
+        return f"Would you like more detail about {snippet.lower()}?"
+    return "Which related university policy should I explain next?"
+
+
+def _split_follow_up(text: str) -> tuple[str, str]:
+    parts = _SUGGESTED_SPLIT.split(text, maxsplit=1)
+    main = parts[0].rstrip()
+    labeled = _one_follow_up_question(parts[1]) if len(parts) > 1 else ""
+    if labeled:
+        return main, labeled
+    blocks = [part.strip() for part in re.split(r"\n\s*\n", main) if part.strip()]
+    if len(blocks) >= 2:
+        last = _one_follow_up_question(blocks[-1])
+        if last.endswith("?") and len(blocks[-1]) <= 140 and blocks[-1].count("?") == 1:
+            return "\n\n".join(blocks[:-1]).rstrip(), last
+    sentences = re.split(r"(?<=[.!])\s+", main)
+    if len(sentences) >= 2:
+        last = _one_follow_up_question(sentences[-1])
+        prefix = " ".join(sentences[:-1]).rstrip()
+        if last.endswith("?") and len(sentences[-1]) <= 140 and len(prefix) >= 80:
+            return prefix, last
+    return main, ""
+
+
+def _ensure_follow_up(question: str, answer: str) -> str:
+    text = (answer or "").strip()
+    if not text:
+        return text
+    if _SHORT_NO.match(question or ""):
+        main, _existing = _split_follow_up(text)
+        return main
+    main, existing = _split_follow_up(text)
+    if existing:
+        return f"{main}\n\n{existing}"
+    if main.endswith("?"):
+        return main
+    follow = _follow_up_from_query(question, main)
+    if not follow:
+        return main
+    return f"{main}\n\n{follow}"
 
 
 def _usable_answer(text: str) -> str:

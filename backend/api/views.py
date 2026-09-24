@@ -7,22 +7,22 @@ from rest_framework.response import Response
 from accounts.permissions import IsStaffUser
 from chat.models import ChatMessage, ChatSession, MessageRole
 from documents.models import Document, DocumentStatus
-from rag.ollama_client import check_ollama
+from rag.groq_client import check_groq
 from rag.vectorstore import get_vector_store
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(_request):
-    ollama = check_ollama()
+    groq = check_groq()
     return Response(
         {
             "status": "ok",
             "service": "bahria-policy-bot",
-            "ollama": ollama,
+            "groq": groq,
             "embedding_provider": settings.EMBEDDING_PROVIDER,
             "embedding_model": settings.EMBEDDING_MODEL,
-            "llm_model": settings.OLLAMA_MODEL,
+            "llm_model": settings.GROQ_MODEL,
         }
     )
 
@@ -58,6 +58,6 @@ def dashboard_stats(_request):
                 }
             ),
             "indexed_chunks": vector_count,
-            "ollama": check_ollama(),
+            "groq": check_groq(),
         }
     )

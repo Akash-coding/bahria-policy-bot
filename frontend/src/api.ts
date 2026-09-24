@@ -98,7 +98,7 @@ export type DashboardStats = {
   total_sessions: number;
   unique_ips?: number;
   indexed_chunks: number;
-  ollama: {
+  groq: {
     reachable: boolean;
     model: string;
     model_available: boolean;

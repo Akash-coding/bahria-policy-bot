@@ -15,7 +15,7 @@ from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 
 from accounts.permissions import IsStaffUser
-from rag.ollama_client import OllamaError
+from rag.groq_client import GroqError
 from rag.qa import answer_question, stream_answer_events
 
 from .models import ChatMessage, ChatSession, MessageRole
@@ -241,7 +241,7 @@ def chat_ask(request):
 
     try:
         result = answer_question(question, history)
-    except OllamaError as exc:
+    except GroqError as exc:
         logger.exception("Chat generation failed")
         return Response(
             {

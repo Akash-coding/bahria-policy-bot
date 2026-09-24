@@ -73,7 +73,9 @@ class RagAndChatTests(TestCase):
         with patch("rag.qa.generate_answer") as mocked:
             result = answer_question("Are electric hoverboards permitted in hostel basements?")
         mocked.assert_not_called()
-        self.assertEqual(result["answer"], NOT_FOUND_MESSAGE)
+        self.assertTrue(result["answer"].startswith(NOT_FOUND_MESSAGE))
+        self.assertNotIn("Suggested question", result["answer"])
+        self.assertIn("?", result["answer"])
         self.assertFalse(result["found"])
         self.assertEqual(result["sources"], [])
 
@@ -120,13 +122,15 @@ class RagAndChatTests(TestCase):
         with patch("rag.qa.stream_generate", return_value=iter([text])):
             events = list(stream_answer_events("What is the attendance policy?"))
         done = [item for item in events if item["type"] == "done"][-1]
-        self.assertEqual(done["answer"], text)
+        self.assertTrue(done["answer"].startswith(text))
+        self.assertNotIn("Suggested question", done["answer"])
+        self.assertIn("?", done["answer"])
         self.assertNotIn("Here is the helpful point", done["answer"])
         deltas = [item["text"] for item in events if item["type"] == "delta"]
         self.assertTrue(deltas)
-        self.assertEqual(deltas[-1], done["answer"])
+        self.assertEqual(deltas[-1], text)
 
-    def test_chat_api_with_mocked_ollama(self):
+    def test_chat_api_with_mocked_groq(self):
         with patch("chat.views.answer_question", return_value={
             "answer": "Students must maintain 75% attendance.",
             "sources": [{"document": "Attendance Policy", "page": 1, "relevance_score": 0.9}],
@@ -358,7 +362,7 @@ class AdminChatMonitorTests(TestCase):
         self.assertEqual(len(detail.data["messages"]), 2)
 
         with patch(
-            "api.views.check_ollama",
+            "api.views.check_groq",
             return_value={"reachable": False, "model": "test", "model_available": False},
         ):
             stats = self.client.get("/api/dashboard/stats/")

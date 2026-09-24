@@ -1,8 +1,10 @@
 # Bahria University Policy Bot
 
-A private, local **RAG (Retrieval-Augmented Generation)** assistant for Bahria University policies.
+A private **RAG (Retrieval-Augmented Generation)** assistant for Bahria University policies.
 
-Users ask policy questions in a chat UI. Answers are generated only from uploaded official documents (PDF, DOCX, TXT). The large language model runs on **Ollama** with **Gemma 3 4B**. Documents never leave the local server.
+**Building a new mobile/web app?** Use [API_README.md](API_README.md) — all backend endpoints, cookies, streaming, and production URL aliases.
+
+Users ask policy questions in a chat UI. Answers are generated only from uploaded official documents (PDF, DOCX, TXT). Chat and embeddings run through the **Groq API**.
 
 If a question is not covered by the knowledge base, the bot replies:
 
@@ -12,10 +14,10 @@ It does not invent rules, dates, penalties, or procedures.
 
 ```text
 User question
-    → embed query (local)
+    → embed query (Groq)
     → local vector similarity search
     → relevant policy chunks (threshold filtered)
-    → Ollama + Gemma 3 4B
+    → Groq chat model
     → answer + document/page citations
 ```
 
@@ -23,11 +25,11 @@ User question
 
 - Python 3.11 or 3.12
 - Node.js 20+
-- [Ollama](https://ollama.com) running locally
+- A Groq API key from [https://console.groq.com](https://console.groq.com)
 - Optional: PostgreSQL 15+ (SQLite is the default for development)
 - Optional: Docker Desktop
 
-RAM: 8 GB minimum; 16 GB recommended for Gemma 3 4B.
+RAM: 8 GB is enough for the app; the language model runs on Groq.
 
 ## 2. Python setup
 
@@ -49,46 +51,22 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-## 3. Ollama installation
+## 3. Groq API setup
 
-Windows / macOS: install from [https://ollama.com/download](https://ollama.com/download).
+Create an API key at [https://console.groq.com/keys](https://console.groq.com/keys) and put it in `.env`:
 
-Linux:
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
+```env
+GROQ_API_KEY=gsk_your_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
-Confirm the API is up:
+Never commit the key. The default chat model is configurable via `GROQ_MODEL`.
 
-```bash
-ollama --version
-curl http://localhost:11434/api/tags
-```
+## 4. Embedding model setup
 
-## 4. Gemma 3 model installation
+The default embedding provider is **Groq** with `nomic-embed-text-v1.5`.
 
-Pull the official 4B Gemma 3 tag used by this project:
-
-```bash
-ollama pull gemma3:4b
-```
-
-Smoke test:
-
-```bash
-ollama run gemma3:4b "Reply with the word ready."
-```
-
-## 5. Embedding model setup
-
-The default embedding provider is **Ollama** with `nomic-embed-text` (local, no cloud API):
-
-```bash
-ollama pull nomic-embed-text
-```
-
-Alternative (Python, still local):
+Alternative (Python, local):
 
 ```env
 EMBEDDING_PROVIDER=sentence-transformers
@@ -101,9 +79,9 @@ Then install:
 pip install "sentence-transformers>=3.0,<4"
 ```
 
-Tests use `EMBEDDING_PROVIDER=lexical` (bag-of-words vectors) so they do not need Ollama.
+Tests use `EMBEDDING_PROVIDER=lexical` (bag-of-words vectors) so they do not call Groq.
 
-## 6. Environment variables
+## 5. Environment variables
 
 Copy `.env.example` to `.env` and edit secrets. Important keys:
 
@@ -112,10 +90,10 @@ Copy `.env.example` to `.env` and edit secrets. Important keys:
 | `DJANGO_SECRET_KEY` | Django secret | change in production |
 | `DJANGO_DEBUG` | Debug mode | `true` |
 | `DATABASE_ENGINE` | `sqlite` or `postgres` | `sqlite` |
-| `OLLAMA_BASE_URL` | Local Ollama HTTP API | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Chat model | `gemma3:4b` |
-| `EMBEDDING_PROVIDER` | `ollama`, `sentence-transformers`, or `lexical` | `ollama` |
-| `EMBEDDING_MODEL` | Embedding model name | `nomic-embed-text` |
+| `GROQ_API_KEY` | Groq secret key | (required) |
+| `GROQ_MODEL` | Chat model | `llama-3.3-70b-versatile` |
+| `EMBEDDING_PROVIDER` | `groq`, `sentence-transformers`, or `lexical` | `groq` |
+| `EMBEDDING_MODEL` | Embedding model name | `nomic-embed-text-v1.5` |
 | `VECTOR_DB_PATH` | Local vector index directory | `./data/chroma` |
 | `SIMILARITY_THRESHOLD` | Minimum cosine similarity | `0.28` |
 | `RAG_TOP_K` | Chunks retrieved per question | `6` |
@@ -228,7 +206,7 @@ Each answer shows **sources** (document name, page when available, relevance). F
 
 Questions outside the knowledge base should return the not-found sentence, not a guessed policy.
 
-Backend tests (no GPU / no live Gemma required):
+Backend tests (no live Groq key required):
 
 ```powershell
 cd backend
@@ -237,7 +215,7 @@ python manage.py test
 
 ## 13. Docker deployment
 
-Ollama runs **inside Compose** (`ollama` service). The first start pulls `gemma3:4b` and `nomic-embed-text` into a Docker volume. That download can take several minutes.
+The backend calls Groq over HTTPS. Set `GROQ_API_KEY` in `.env` before `docker compose up`.
 
 ```powershell
 copy .env.example .env
@@ -259,7 +237,7 @@ docker compose exec backend python manage.py create_admin --username admin --pas
 2. Use PostgreSQL (`DATABASE_ENGINE=postgres`).
 3. Set `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS` to the real HTTPS origin.
 4. Serve the Vite `dist/` folder (or the frontend container) behind HTTPS.
-5. Keep Ollama on the private network; do not expose it publicly.
+5. Keep `GROQ_API_KEY` only in environment variables; never commit it.
 6. Replace sample policies with official Bahria University documents.
 7. Restrict `/api/documents/` to staff (already enforced).
 8. Run `python manage.py collectstatic` and put media/chroma on persistent disks.

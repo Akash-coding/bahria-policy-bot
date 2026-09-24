@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import os
 import re
 from functools import lru_cache
 
@@ -30,7 +31,7 @@ class EmbeddingError(RuntimeError):
 
 
 class EmbeddingService:
-    """Local embedding service. Provider is selected via EMBEDDING_PROVIDER."""
+    """Embedding service. Provider is selected via EMBEDDING_PROVIDER."""
 
     def __init__(self) -> None:
         self.provider = settings.EMBEDDING_PROVIDER
@@ -39,15 +40,15 @@ class EmbeddingService:
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         cleaned = [text if text and text.strip() else " " for text in texts]
-        if self.provider == "ollama":
-            return self._embed_ollama_many(cleaned)
+        if self.provider == "groq":
+            return self._embed_groq_many(cleaned)
         if self.provider in {"sentence-transformers", "sbert"}:
             return self._embed_sbert(cleaned)
         if self.provider in {"lexical", "hash"}:
             return [self._embed_lexical(text) for text in cleaned]
         raise EmbeddingError(
             f"Unknown EMBEDDING_PROVIDER '{self.provider}'. "
-            "Use ollama, sentence-transformers, or lexical."
+            "Use groq, sentence-transformers, or lexical."
         )
 
     def embed_query(self, text: str) -> list[float]:
@@ -64,9 +65,9 @@ class EmbeddingService:
         return text
 
     def _embed_timeout(self) -> int:
-        return max(int(getattr(settings, "OLLAMA_TIMEOUT", 600)), 120)
+        return max(int(getattr(settings, "GROQ_TIMEOUT", 120)), 120)
 
-    def _embed_ollama_many(self, texts: list[str], batch_size: int = 16) -> list[list[float]]:
+    def _embed_groq_many(self, texts: list[str], batch_size: int = 16) -> list[list[float]]:
         vectors: list[list[float]] = []
         total = len(texts)
         for start in range(0, total, batch_size):
@@ -78,46 +79,46 @@ class EmbeddingService:
                 total,
                 self.model_name,
             )
-            vectors.extend(self._embed_ollama_batch(batch))
+            vectors.extend(self._embed_groq_batch(batch))
         if len(vectors) != total:
             raise EmbeddingError("Embedding count did not match text count.")
         return vectors
 
-    def _embed_ollama_batch(self, texts: list[str]) -> list[list[float]]:
+    def _embed_groq_batch(self, texts: list[str]) -> list[list[float]]:
+        from .groq_client import GroqError, _base_url, _headers
+
         timeout = self._embed_timeout()
-        url = f"{settings.OLLAMA_BASE_URL}/api/embed"
-        payload = {"model": self.model_name, "input": texts, "keep_alive": "60m"}
+        url = f"{_base_url()}/embeddings"
+        payload = {"model": self.model_name, "input": texts, "encoding_format": "float"}
         try:
-            response = requests.post(url, json=payload, timeout=timeout)
-            if response.status_code == 404:
-                return [self._embed_ollama_legacy(text, timeout) for text in texts]
-            response.raise_for_status()
+            response = requests.post(url, headers=_headers(), json=payload, timeout=timeout)
+            if not response.ok:
+                try:
+                    data = response.json()
+                    error = data.get("error")
+                    detail = error.get("message") if isinstance(error, dict) else error
+                except ValueError:
+                    detail = response.text
+                raise EmbeddingError(
+                    f"Failed to generate embeddings via Groq ({self.model_name}): "
+                    f"{detail or response.status_code}"
+                )
             data = response.json()
+        except GroqError as exc:
+            raise EmbeddingError(str(exc)) from exc
         except requests.RequestException as exc:
             raise EmbeddingError(
-                f"Failed to generate embeddings via Ollama ({self.model_name}): {exc}"
+                f"Failed to generate embeddings via Groq ({self.model_name}): {exc}"
             ) from exc
 
-        embeddings = data.get("embeddings")
-        if isinstance(embeddings, list) and len(embeddings) == len(texts):
-            return embeddings
-        if len(texts) == 1 and data.get("embedding"):
-            return [data["embedding"]]
-        raise EmbeddingError("Ollama embedding response did not include a vector.")
-
-    def _embed_ollama_legacy(self, text: str, timeout: int) -> list[float]:
-        response = requests.post(
-            f"{settings.OLLAMA_BASE_URL}/api/embeddings",
-            json={"model": self.model_name, "prompt": text},
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        data = response.json()
-        if "embeddings" in data and data["embeddings"]:
-            return data["embeddings"][0]
-        if "embedding" in data:
-            return data["embedding"]
-        raise EmbeddingError("Ollama embedding response did not include a vector.")
+        items = data.get("data")
+        if not isinstance(items, list) or len(items) != len(texts):
+            raise EmbeddingError("Groq embedding response did not include a vector.")
+        ordered = sorted(items, key=lambda item: int(item.get("index") or 0))
+        vectors = [item.get("embedding") for item in ordered]
+        if any(not isinstance(vector, list) or not vector for vector in vectors):
+            raise EmbeddingError("Groq embedding response did not include a vector.")
+        return vectors
 
     def _embed_sbert(self, texts: list[str]) -> list[list[float]]:
         model = self._load_sbert()
@@ -131,10 +132,16 @@ class EmbeddingService:
             except ImportError as exc:
                 raise EmbeddingError(
                     "sentence-transformers is not installed. "
-                    "Install it or set EMBEDDING_PROVIDER=ollama."
+                    "Install it or set EMBEDDING_PROVIDER=groq."
                 ) from exc
+            os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
             logger.info("Loading sentence-transformers model %s", self.model_name)
-            self._st_model = SentenceTransformer(self.model_name)
+            try:
+                self._st_model = SentenceTransformer(self.model_name)
+            except Exception as exc:
+                raise EmbeddingError(
+                    f"Failed to load embedding model {self.model_name}: {exc}"
+                ) from exc
         return self._st_model
 
     def _embed_lexical(self, text: str) -> list[float]:

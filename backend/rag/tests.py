@@ -4,8 +4,17 @@ import json
 from rag.chunking import split_pages
 from rag.extraction import extract_pages
 from rag.prompts import NOT_FOUND_MESSAGE
-from rag.qa import _finalize_answer, _greeting_reply, _partial_visible, answer_question, sanitize_answer, stream_answer_events
-from rag.ollama_client import stream_generate
+from rag.qa import (
+    _ensure_follow_up,
+    _finalize_answer,
+    _greeting_reply,
+    _partial_visible,
+    _split_follow_up,
+    answer_question,
+    sanitize_answer,
+    stream_answer_events,
+)
+from rag.groq_client import stream_generate
 from django.test import SimpleTestCase
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -85,6 +94,9 @@ class AnswerCleanupTests(SimpleTestCase):
         self.assertIn("Bahria University Policy Bot", result["answer"])
         self.assertIn("Why I exist", result["answer"])
         self.assertIn("What I do", result["answer"])
+        self.assertNotIn("Suggested question", result["answer"])
+        _main, follow = _split_follow_up(result["answer"])
+        self.assertTrue(follow.endswith("?"))
 
     def test_policy_question_starting_with_hi_is_not_treated_as_greeting(self):
         self.assertIsNone(_greeting_reply("hi, what is the attendance policy?"))
@@ -98,6 +110,8 @@ class AnswerCleanupTests(SimpleTestCase):
         self.assertGreaterEqual(len(events), 2)
         self.assertEqual(events[-1]["type"], "done")
         self.assertIn("alaikum", events[-1]["answer"].lower())
+        self.assertNotIn("Suggested question", events[-1]["answer"])
+        self.assertIn("?", events[-1]["answer"])
 
     def test_qwen_thinking_is_hidden(self):
         raw = (
@@ -150,7 +164,9 @@ class AnswerCleanupTests(SimpleTestCase):
         done = [item for item in events if item["type"] == "done"][-1]
         self.assertTrue(deltas)
         self.assertEqual(deltas[-1], "Hello! Kaise madad kar sakta hoon?")
-        self.assertEqual(done["answer"], "Hello! Kaise madad kar sakta hoon?")
+        self.assertTrue(done["answer"].startswith("Hello! Kaise madad kar sakta hoon?"))
+        self.assertNotIn("Suggested question", done["answer"])
+        self.assertNotIn("</think>", done["answer"])
         self.assertNotIn("</think>", done["answer"])
         self.assertEqual(done["sources"], [])
 
@@ -195,15 +211,18 @@ class AnswerCleanupTests(SimpleTestCase):
         self.assertNotIn("Here is the helpful point", answer)
 
 
-class OllamaStreamParseTests(SimpleTestCase):
-    def test_stream_reads_message_and_skips_thinking_only_chunks(self):
+class GroqStreamParseTests(SimpleTestCase):
+    def test_stream_reads_delta_and_skips_reasoning_only_chunks(self):
         lines = [
-            json.dumps({"message": {"thinking": "planning the reply", "content": ""}}),
-            json.dumps({"message": {"content": "Hello"}}),
-            json.dumps({"message": {"content": "!"}, "done": True}),
+            'data: {"choices":[{"delta":{"reasoning":"planning the reply"}}]}',
+            'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+            'data: {"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}]}',
+            "data: [DONE]",
         ]
 
         class FakeResponse:
+            ok = True
+
             def raise_for_status(self):
                 return None
 
@@ -216,6 +235,141 @@ class OllamaStreamParseTests(SimpleTestCase):
             def __exit__(self, *args):
                 return False
 
-        with patch("rag.ollama_client.requests.post", return_value=FakeResponse()):
-            chunks = list(stream_generate("sys", "user"))
+        with patch("rag.groq_client.requests.post", return_value=FakeResponse()):
+            with patch("rag.groq_client._headers", return_value={"Authorization": "Bearer test"}):
+                chunks = list(stream_generate("sys", "user"))
         self.assertEqual(chunks, ["Hello", "!"])
+
+    def test_qwen_payload_hides_reasoning(self):
+        from rag.groq_client import _chat_payload
+
+        payload = _chat_payload("sys", "user", stream=True)
+        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertEqual(payload["reasoning_format"], "hidden")
+        self.assertIn("max_completion_tokens", payload)
+
+    def test_otpm_error_retries_with_smaller_limit(self):
+        from rag.groq_client import generate_answer
+
+        class TooBig:
+            ok = False
+            status_code = 413
+
+            def json(self):
+                return {
+                    "error": {
+                        "message": (
+                            "Request too large ... on output tokens per minute (OTPM): "
+                            "Limit 1000, Requested 1024."
+                        )
+                    }
+                }
+
+            def close(self):
+                return None
+
+        class Ok:
+            ok = True
+
+            def json(self):
+                return {"choices": [{"message": {"content": "OK"}}]}
+
+        posts = [TooBig(), Ok()]
+
+        def fake_post(*_args, **_kwargs):
+            return posts.pop(0)
+
+        with patch("rag.groq_client.requests.post", side_effect=fake_post):
+            with patch("rag.groq_client._headers", return_value={"Authorization": "Bearer test"}):
+                self.assertEqual(generate_answer("sys", "user"), "OK")
+
+
+class FollowUpQuestionTests(SimpleTestCase):
+    def test_keeps_model_follow_up_and_drops_extras(self):
+        raw = (
+            "Keep 75 percent attendance to sit the final exam.\n\n"
+            "**Suggested question:** What happens if attendance falls below 75%?\n"
+            "**Suggested question:** Any other question?"
+        )
+        cleaned = _ensure_follow_up("What is the attendance policy?", raw)
+        self.assertTrue(cleaned.startswith("Keep 75 percent attendance to sit the final exam."))
+        self.assertNotIn("Suggested question", cleaned)
+        _main, follow = _split_follow_up(cleaned)
+        self.assertEqual(follow, "What happens if attendance falls below 75%?")
+        self.assertNotIn("Any other question?", cleaned)
+
+    def test_follow_up_changes_with_the_query(self):
+        attendance = _ensure_follow_up(
+            "What is the attendance policy?",
+            "Students must keep 75% attendance to sit the final exam.",
+        )
+        scholarship = _ensure_follow_up(
+            "What GPA is required for a scholarship?",
+            "Merit awards need a CGPA of 3.50.",
+        )
+        self.assertNotIn("Suggested question", attendance)
+        self.assertNotIn("Suggested question", scholarship)
+        _main_a, att_q = _split_follow_up(attendance)
+        _main_s, sch_q = _split_follow_up(scholarship)
+        self.assertNotEqual(att_q, sch_q)
+        self.assertTrue(att_q.endswith("?"))
+        self.assertTrue(sch_q.endswith("?"))
+
+    def test_yes_continues_the_previous_follow_up(self):
+        history = [
+            {"role": "user", "content": "What is the attendance policy?"},
+            {
+                "role": "assistant",
+                "content": (
+                    "Students must keep 75 percent attendance.\n\n"
+                    "Would you like to know what happens if attendance falls below 75%?"
+                ),
+            },
+        ]
+        excerpt = (
+            "Students with less than 75 percent attendance in a registered course "
+            "cannot sit the final examination under the official handbook rule."
+        )
+        with patch(
+            "rag.qa.retrieve_policy_chunks",
+            return_value=(
+                [
+                    {
+                        "content": excerpt,
+                        "metadata": {
+                            "document_title": "Attendance Policy",
+                            "document_id": 1,
+                            "page_number": 1,
+                            "chunk_index": 0,
+                        },
+                        "relevance_score": 0.9,
+                        "vector_id": "1",
+                    }
+                ],
+                "vector",
+            ),
+        ):
+            with patch(
+                "rag.qa.generate_answer",
+                return_value="If attendance falls short you cannot sit the final exam.",
+            ) as mocked:
+                result = answer_question("yes", history)
+        self.assertTrue(mocked.called)
+        self.assertIn("falls below 75%", mocked.call_args[0][1])
+        self.assertIn("cannot sit", result["answer"].lower())
+        self.assertNotIn("Suggested question", result["answer"])
+
+    def test_no_keeps_the_conversation_open(self):
+        history = [
+            {"role": "user", "content": "What is the attendance policy?"},
+            {
+                "role": "assistant",
+                "content": "Keep 75 percent attendance.\n\nWould you like the next step related to this attendance policy?",
+            },
+        ]
+        with patch("rag.qa.retrieve_policy_chunks") as mocked:
+            result = answer_question("no", history)
+        mocked.assert_not_called()
+        self.assertNotIn("Suggested question", result["answer"])
+        self.assertNotIn(NOT_FOUND_MESSAGE, result["answer"])
+        self.assertIn("handbook", result["answer"].lower())
