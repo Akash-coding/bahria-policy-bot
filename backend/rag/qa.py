@@ -7,6 +7,7 @@ from typing import Any
 from django.conf import settings
 
 from .embeddings import EmbeddingError
+from .extraction import normalize_policy_text
 from .groq_client import GroqError, generate_answer, stream_generate
 from .prompts import (
     BOT_IDENTITY_ANSWER,
@@ -578,6 +579,7 @@ def _drop_reasoning(text: str) -> str:
 def sanitize_answer(text: str) -> str:
     """Keep only the user-facing policy answer; drop model reasoning and source lines."""
     cleaned = _drop_reasoning(_strip_think_tags(text))
+    cleaned = normalize_policy_text(cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip() or NOT_FOUND_MESSAGE
 
@@ -607,7 +609,7 @@ def _build_context(hits: list[dict[str, Any]]) -> str:
     used = 0
     for index, hit in enumerate(hits, start=1):
         meta = hit.get("metadata") or {}
-        title = meta.get("document_title") or "Untitled source"
+        title = normalize_policy_text(meta.get("document_title") or "Untitled source")
         source_type = _source_type_label(meta)
         url = (meta.get("source_url") or "").strip()
         page = meta.get("page_number")
@@ -623,7 +625,7 @@ def _build_context(hits: list[dict[str, Any]]) -> str:
             header += f" | section: {section}"
         if version:
             header += f" | version {version}"
-        body = (hit.get("content") or "").strip()
+        body = normalize_policy_text((hit.get("content") or "").strip())
         if len(body) > 900:
             body = body[:900].rsplit(" ", 1)[0] + "…"
         block = f"{header}\n{body}"
@@ -637,7 +639,7 @@ def _build_context(hits: list[dict[str, Any]]) -> str:
 def _extractive_answer(hits: list[dict[str, Any]]) -> str:
     sentences: list[str] = []
     for hit in hits[:4]:
-        text = re.sub(r"\s+", " ", (hit.get("content") or "").strip())
+        text = re.sub(r"\s+", " ", normalize_policy_text(hit.get("content") or ""))
         for part in re.split(r"(?<=[.!?])\s+", text):
             if len(part) < 40:
                 continue
@@ -690,7 +692,7 @@ def _unique_sources(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         seen.add(key)
         source_type = _source_type_label(meta)
-        title = meta.get("document_title") or "Untitled source"
+        title = normalize_policy_text(meta.get("document_title") or "Untitled source")
         sources.append(
             {
                 "document_id": meta.get("document_id"),
@@ -700,7 +702,7 @@ def _unique_sources(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "section": (meta.get("section") or "").strip() or None,
                 "chunk_index": meta.get("chunk_index"),
                 "relevance_score": round(float(hit.get("relevance_score") or 0), 4),
-                "excerpt": (hit.get("content") or "")[:280],
+                "excerpt": normalize_policy_text(hit.get("content") or "")[:280],
                 "source_type": source_type,
                 "source_url": url or None,
                 "image_url": (meta.get("image_url") or "").strip() or None,

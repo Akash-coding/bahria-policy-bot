@@ -14,7 +14,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
-from rag.extraction import ExtractionError
+from rag.extraction import ExtractionError, normalize_policy_text
 
 from .extractors import (
     DOCUMENT_TYPES,
@@ -173,6 +173,22 @@ def crawl_website(website_id: int, fetch: Callable[[str], requests.Response] | N
         website.save(update_fields=["status", "error_message", "updated_at"])
         raise
     return website
+
+
+def _response_text(response: requests.Response) -> str:
+    payload = response.content or b""
+    if not payload:
+        return ""
+    for encoding in ("utf-8", "utf-8-sig"):
+        try:
+            return payload.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    declared = response.encoding or "cp1252"
+    try:
+        return payload.decode(declared)
+    except (LookupError, UnicodeDecodeError):
+        return payload.decode("utf-8", errors="replace")
 
 
 def _http_get(url: str) -> requests.Response:
@@ -358,9 +374,9 @@ def _crawl(website: WebsiteSource, fetch: Callable[[str], requests.Response]) ->
                 if html_saved >= max_pages:
                     continue
                 parser = _LinkParser()
-                parser.feed(response.text or "")
-                title = parser.title or website.domain
-                text = parser.text()
+                parser.feed(_response_text(response))
+                title = normalize_policy_text(parser.title or website.domain)
+                text = normalize_policy_text(parser.text())
                 digest = hashlib.sha256((text or "").encode("utf-8")).hexdigest()
                 if not text or len(text) < 40:
                     _save_page(

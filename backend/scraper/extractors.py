@@ -5,7 +5,7 @@ import re
 from tempfile import NamedTemporaryFile
 from urllib.parse import urlparse
 
-from rag.extraction import ExtractionError, extract_pages, _clean_text
+from rag.extraction import ExtractionError, extract_pages, _clean_text, normalize_policy_text
 
 logger = logging.getLogger("scraper")
 
@@ -143,10 +143,10 @@ def image_text(payload: bytes, mime: str = "", alt: str = "", source_url: str = 
     except Exception as exc:
         logger.info("Image vision skipped for %s: %s", source_url or "image", exc)
     if len(ocr) >= 40:
-        return ocr
+        return normalize_policy_text(ocr)
     if len(alt) >= 20:
-        return alt
-    return ocr or alt
+        return normalize_policy_text(alt)
+    return normalize_policy_text(ocr or alt)
 
 
 def _legacy_doc_text(payload: bytes) -> str:

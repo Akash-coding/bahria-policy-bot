@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 import re
 from pathlib import Path
@@ -11,13 +12,64 @@ class ExtractionError(RuntimeError):
     pass
 
 
+_FANCY_CHARS = {
+    "\u2018": "'",
+    "\u2019": "'",
+    "\u201a": "'",
+    "\u201b": "'",
+    "\u201c": '"',
+    "\u201d": '"',
+    "\u201e": '"',
+    "\u2013": "-",
+    "\u2014": "-",
+    "\u00a0": " ",
+    "\u2026": "...",
+    "\ufeff": "",
+}
+_MOJIBAKE_MARK = ("â", "Ã", "Â", "�")
+
+
+def _mojibake_score(text: str) -> int:
+    return sum((text or "").count(mark) for mark in _MOJIBAKE_MARK)
+
+
+def _repair_mojibake(text: str) -> str:
+    current = text or ""
+    for _ in range(2):
+        if _mojibake_score(current) == 0:
+            return current
+        repaired = None
+        for encoding in ("cp1252", "latin-1"):
+            try:
+                candidate = current.encode(encoding).decode("utf-8")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                continue
+            if _mojibake_score(candidate) < _mojibake_score(current):
+                repaired = candidate
+                break
+        if not repaired:
+            break
+        current = repaired
+    return current
+
+
+def normalize_policy_text(text: str) -> str:
+    """Fix UTF-8 mojibake (Universityâs) and normalize quotes for chatbot display."""
+    cleaned = html.unescape(text or "")
+    cleaned = _repair_mojibake(cleaned)
+    cleaned = cleaned.translate(str.maketrans(_FANCY_CHARS))
+    cleaned = re.sub(r"â(?=['\"])", "", cleaned)
+    cleaned = cleaned.replace("Â ", " ")
+    cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = cleaned.replace("\x00", " ")
+    cleaned = re.sub(r"[ \t]+", " ", cleaned)
+    cleaned = re.sub(r" *\n *", "\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def _clean_text(text: str) -> str:
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = text.replace("\x00", " ")
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r" *\n *", "\n", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    return normalize_policy_text(text)
 
 
 def extract_pages(file_path: str | Path, file_type: str) -> list[tuple[int | None, str]]:
@@ -88,10 +140,11 @@ def _extract_docx(path: Path) -> list[tuple[int | None, str]]:
 
 
 def _extract_txt(path: Path) -> list[tuple[int | None, str]]:
+    data = path.read_bytes()
     try:
-        text = path.read_text(encoding="utf-8")
+        text = data.decode("utf-8")
     except UnicodeDecodeError:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = data.decode("cp1252", errors="replace")
     cleaned = _clean_text(text)
     if not cleaned:
         raise ExtractionError("The text file is empty.")

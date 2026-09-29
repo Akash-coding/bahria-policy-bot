@@ -440,6 +440,26 @@ class RetrievalGuardTests(SimpleTestCase):
         self.assertIn("seventy five", text.lower())
 
 
+class EncodingCleanupTests(SimpleTestCase):
+    def test_repairs_mojibake_university_apostrophe(self):
+        from rag.extraction import normalize_policy_text
+
+        broken = "Bahria University" + bytes((0xE2, 0x80, 0x99)).decode("cp1252") + "s handbook"
+        self.assertIn("â", broken)
+        self.assertEqual(normalize_policy_text(broken), "Bahria University's handbook")
+        cleaned = sanitize_answer(broken + " applies to every student.")
+        self.assertIn("University's", cleaned)
+        self.assertNotIn("â", cleaned)
+
+    def test_normalizes_curly_apostrophe_and_html_entity(self):
+        from rag.extraction import normalize_policy_text
+
+        self.assertEqual(normalize_policy_text("University\u2019s"), "University's")
+        self.assertEqual(normalize_policy_text("University&rsquo;s"), "University's")
+        leftover = "Bahria Universityâ\u2019s attendance rule is 75 percent."
+        self.assertNotIn("â", sanitize_answer(leftover))
+
+
 class EmbeddingOfflineTests(SimpleTestCase):
     def setUp(self):
         from rag.embeddings import get_embedding_service
