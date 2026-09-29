@@ -10,6 +10,7 @@ from .embeddings import EmbeddingError
 from .groq_client import GroqError, generate_answer, stream_generate
 from .prompts import (
     BOT_IDENTITY_ANSWER,
+    CONTINUATION_USER_PROMPT,
     GREETING_SYSTEM_PROMPT,
     NOT_FOUND_MESSAGE,
     POLICY_BOT_SYSTEM_PROMPT,
@@ -27,6 +28,7 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
     if not question:
         return _ready("Please ask a question about Bahria University policies.", found=False)
 
+    original = question
     question, declined = _continue_from_short_reply(question, history or [])
     if declined:
         return _ready(declined, found=True)
@@ -56,13 +58,22 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
 
     logger.info("Answering with %s retrieval (%s chunks)", method, len(relevant))
     context = _build_context(relevant)
+    offer = _last_offered_question(history or [])
+    if _is_short_continue(original) and offer:
+        user_prompt = CONTINUATION_USER_PROMPT.format(
+            offer=offer,
+            question=question,
+            history=_format_history(history or [], limit=6),
+        )
+    else:
+        user_prompt = USER_PROMPT_TEMPLATE.format(
+            question=question,
+            history=_format_history(history or []),
+        )
     return {
         "mode": "generate",
         "system_prompt": POLICY_BOT_SYSTEM_PROMPT.format(context=context),
-        "user_prompt": USER_PROMPT_TEMPLATE.format(
-            question=question,
-            history=_format_history(history or []),
-        ),
+        "user_prompt": user_prompt,
         "hits": relevant,
         "sources": _unique_sources(relevant),
         "retrieval": method,
@@ -157,10 +168,15 @@ _SUGGESTED_SPLIT = re.compile(
     re.I,
 )
 _SHORT_YES = re.compile(
-    r"^\s*(?:yes|yep|yeah|yup|sure|ok|okay|please|go ahead|of course|"
-    r"yes please|yes tell me|yes,? please|"
-    r"han+|haan+|ji+|haan?\s*ji|theek hai|bilkul)"
-    r"[\s.!,]*$",
+    r"^\s*(?:"
+    r"yes(?:\s*,?\s*(?:please(?:\s+do)?|sure|do(?:\s+it)?|tell me|go ahead))?"
+    r"|yep|yeah|yup"
+    r"|sure(?:\s*,?\s*please)?"
+    r"|ok(?:ay)?"
+    r"|please(?:\s+do)?"
+    r"|go ahead|of course|do it"
+    r"|han+|haan+|ji+|haan?\s*ji|theek hai|bilkul"
+    r")[\s.!,]*$",
     re.I,
 )
 _SHORT_NO = re.compile(
@@ -168,6 +184,28 @@ _SHORT_NO = re.compile(
     r"nahi+|na+|nahi chahiye|mat batao)"
     r"[\s.!,]*$",
     re.I,
+)
+_SHORT_MORE = re.compile(
+    r"^\s*(?:tell me more|more(?:\s+detail(?:s)?)?(?:\s+please)?|"
+    r"explain more|go on|continue|and then\??|what else|"
+    r"please explain|please tell me)"
+    r"[\s.!,]*$",
+    re.I,
+)
+_OFFER_LEAD = re.compile(
+    r"^\s*(?:"
+    r"would you like(?: me)?(?: to)?"
+    r"|do you (?:want|need)(?: me)?(?: to)?"
+    r"|should i(?: also)?"
+    r"|can i(?: also)?"
+    r"|shall i"
+    r"|want me to"
+    r")\s+",
+    re.I,
+)
+_NO_THANKS_REPLY = (
+    "No problem — I will skip that. "
+    "What else would you like to know from this policy, or name another handbook topic."
 )
 
 
@@ -180,36 +218,91 @@ def _one_follow_up_question(text: str) -> str:
     line = re.sub(r"\s+", " ", line).strip()
     if line and not line.endswith("?"):
         line = line.rstrip(".") + "?"
-    return line[:140]
+    return line[:180]
+
+
+def _last_user_question(history: list[dict[str, str]]) -> str:
+    for item in reversed(history or []):
+        if (item.get("role") or "") == "user" and (item.get("content") or "").strip():
+            return (item.get("content") or "").strip()
+    return ""
 
 
 def _last_offered_question(history: list[dict[str, str]]) -> str:
     for item in reversed(history or []):
         if (item.get("role") or "") != "assistant":
             continue
-        questions = re.findall(r"([^?\n][^?\n]{8,120}\?)", item.get("content") or "")
+        content = item.get("content") or ""
+        _main, follow = _split_follow_up(content)
+        if follow:
+            return follow
+        questions = re.findall(r"([^?\n][^?\n]{6,160}\?)", content)
         if questions:
             return _one_follow_up_question(questions[-1])
     return ""
 
 
+def _is_short_yes(text: str) -> bool:
+    stripped = (text or "").strip()
+    return bool(stripped) and len(stripped) <= 48 and bool(_SHORT_YES.match(stripped))
+
+
+def _is_short_no(text: str) -> bool:
+    stripped = (text or "").strip()
+    return bool(stripped) and len(stripped) <= 48 and bool(_SHORT_NO.match(stripped))
+
+
+def _is_short_more(text: str) -> bool:
+    stripped = (text or "").strip()
+    return bool(stripped) and len(stripped) <= 60 and bool(_SHORT_MORE.match(stripped))
+
+
+def _is_short_continue(text: str) -> bool:
+    return _is_short_yes(text) or _is_short_more(text)
+
+
+def _actionable_suggestion(offer: str) -> str:
+    text = _one_follow_up_question(offer)
+    stripped = _OFFER_LEAD.sub("", text).strip()
+    if not stripped or stripped.lower() == text.lower():
+        return text
+    body = stripped.rstrip("?").strip()
+    if not body:
+        return text
+    if re.match(r"^(what|how|when|where|why|which|who)\b", body, re.I):
+        return body[0].upper() + body[1:] + "?"
+    return body[0].upper() + body[1:] + "."
+
+
+def _resolved_follow_up(history: list[dict[str, str]], extra: str = "") -> str:
+    offer = _last_offered_question(history)
+    last_user = _last_user_question(history)
+    action = _actionable_suggestion(offer) if offer else ""
+    parts = [part for part in (last_user, action, extra) if part]
+    if not parts:
+        return extra or last_user or offer
+    seen: list[str] = []
+    for part in parts:
+        if part.lower() not in {item.lower() for item in seen}:
+            seen.append(part)
+    return " ".join(seen)
+
+
 def _continue_from_short_reply(
     question: str, history: list[dict[str, str]]
 ) -> tuple[str, str | None]:
-    if _SHORT_YES.match(question):
-        offered = _last_offered_question(history)
-        if offered:
+    if _is_short_yes(question) or _is_short_more(question):
+        extra = "Tell me more, including a concrete example." if _is_short_more(question) else ""
+        resolved = _resolved_follow_up(history, extra=extra)
+        if resolved:
             logger.info("User accepted the previous follow-up")
-            return offered, None
+            return resolved, None
         return question, (
             "Which handbook policy should I explain for you? "
             "Attendance, exams, fees, or leaves?"
         )
-    if _SHORT_NO.match(question):
-        return question, (
-            "Alright. Tell me another handbook topic whenever you are ready, "
-            "such as attendance, exams, fees, or leaves."
-        )
+    if _is_short_no(question):
+        return question, _NO_THANKS_REPLY
     return question, None
 
 
@@ -282,7 +375,7 @@ def _ensure_follow_up(question: str, answer: str) -> str:
     text = (answer or "").strip()
     if not text:
         return text
-    if _SHORT_NO.match(question or ""):
+    if _is_short_no(question or ""):
         main, _existing = _split_follow_up(text)
         return main
     main, existing = _split_follow_up(text)
@@ -494,8 +587,8 @@ def _build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
     return f"{previous_user[-1]}\n{question}"
 
 
-def _format_history(history: list[dict[str, str]]) -> str:
-    recent = history[-2:]
+def _format_history(history: list[dict[str, str]], limit: int = 2) -> str:
+    recent = history[-limit:]
     if not recent:
         return "(none)"
     lines = []

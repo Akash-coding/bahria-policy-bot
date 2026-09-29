@@ -5,6 +5,7 @@ from rag.chunking import split_pages
 from rag.extraction import extract_pages
 from rag.prompts import NOT_FOUND_MESSAGE
 from rag.qa import (
+    _continue_from_short_reply,
     _ensure_follow_up,
     _finalize_answer,
     _greeting_reply,
@@ -373,3 +374,27 @@ class FollowUpQuestionTests(SimpleTestCase):
         self.assertNotIn("Suggested question", result["answer"])
         self.assertNotIn(NOT_FOUND_MESSAGE, result["answer"])
         self.assertIn("handbook", result["answer"].lower())
+        self.assertNotIn("repeat", result["answer"].lower())
+
+    def test_short_replies_resolve_the_last_suggestion(self):
+        history = [
+            {"role": "user", "content": "What is the attendance policy?"},
+            {
+                "role": "assistant",
+                "content": (
+                    "Keep 75 percent attendance to sit the exam.\n\n"
+                    "Would you like me to explain this with an example?"
+                ),
+            },
+        ]
+        for reply in ("Yes", "Sure", "Okay", "Please do", "Tell me more"):
+            resolved, declined = _continue_from_short_reply(reply, history)
+            self.assertIsNone(declined, reply)
+            self.assertIn("example", resolved.lower(), reply)
+            self.assertIn("attendance", resolved.lower(), reply)
+            self.assertNotEqual(resolved.strip().lower(), reply.strip().lower(), reply)
+        resolved, declined = _continue_from_short_reply("No", history)
+        self.assertEqual(resolved, "No")
+        self.assertIsNotNone(declined)
+        self.assertIn("skip", declined.lower())
+        self.assertNotIn("repeat", declined.lower())

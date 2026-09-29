@@ -72,3 +72,18 @@ Speak directly to the student and answer what they asked.
 If the notes do not cover the topic, use the required not-found sentence.
 After the answer, ask exactly one natural follow-up question that continues this same topic. No heading.
 """
+
+CONTINUATION_USER_PROMPT = """The student gave a short confirmation (yes / sure / okay / please do / tell me more) to your last suggestion. Carry that suggestion out now. Do not ask them to repeat the previous question.
+
+Last suggestion they accepted:
+{offer}
+
+Resolved request you must answer:
+{question}
+
+Recent conversation:
+{history}
+
+Answer in your own words using the policy notes. If the notes do not cover the topic, use the required not-found sentence.
+After the answer, ask exactly one new natural yes/no follow-up on this same topic. No heading.
+"""
