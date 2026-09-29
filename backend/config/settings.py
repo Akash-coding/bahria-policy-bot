@@ -227,6 +227,8 @@ GROQ_VISION_MODEL = _env("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-
 
 EMBEDDING_PROVIDER = _env("EMBEDDING_PROVIDER", "sentence-transformers").lower()
 EMBEDDING_MODEL = _env("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+EMBEDDING_MODEL_PATH = _env("EMBEDDING_MODEL_PATH", "")
+EMBEDDING_ALLOW_DOWNLOAD = _env_bool("EMBEDDING_ALLOW_DOWNLOAD", True)
 
 _vector_path = _env("VECTOR_DB_PATH", str(PROJECT_ROOT / "data" / "chroma"))
 VECTOR_DB_PATH = Path(_vector_path)

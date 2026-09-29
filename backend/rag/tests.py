@@ -438,3 +438,80 @@ class RetrievalGuardTests(SimpleTestCase):
         )
         self.assertNotEqual(text, NOT_FOUND_MESSAGE)
         self.assertIn("seventy five", text.lower())
+
+
+class EmbeddingOfflineTests(SimpleTestCase):
+    def setUp(self):
+        from rag.embeddings import get_embedding_service
+
+        get_embedding_service.cache_clear()
+        self.addCleanup(get_embedding_service.cache_clear)
+
+    def test_finds_local_minilm_folder_without_huggingface(self):
+        from tempfile import TemporaryDirectory
+
+        from django.test import override_settings
+
+        from rag.embeddings import find_local_embedding_model
+
+        with TemporaryDirectory() as raw:
+            model_dir = Path(raw) / "all-MiniLM-L6-v2"
+            model_dir.mkdir()
+            (model_dir / "modules.json").write_text("[]", encoding="utf-8")
+            with override_settings(EMBEDDING_MODEL_PATH=str(model_dir), EMBEDDING_MODEL="all-MiniLM-L6-v2"):
+                found = find_local_embedding_model("all-MiniLM-L6-v2")
+        self.assertEqual(found, model_dir)
+
+    def test_sentence_transformers_falls_back_to_lexical_when_hf_is_down(self):
+        from unittest.mock import patch
+
+        from django.test import override_settings
+
+        from rag.embeddings import LEXICAL_DIM, get_embedding_service
+
+        hf_error = OSError(
+            "We couldn't connect to huggingface.co to load the files, "
+            "and couldn't find them in the cached files."
+        )
+        with override_settings(
+            EMBEDDING_PROVIDER="sentence-transformers",
+            EMBEDDING_MODEL="all-MiniLM-L6-v2",
+            EMBEDDING_MODEL_PATH="",
+        ):
+            with patch("rag.embeddings.find_local_embedding_model", return_value=None):
+                with patch("rag.embeddings._load_sentence_transformer", side_effect=hf_error):
+                    service = get_embedding_service()
+                    vectors = service.embed_texts(
+                        ["Students must keep seventy five percent attendance."]
+                    )
+        self.assertEqual(len(vectors), 1)
+        self.assertEqual(len(vectors[0]), LEXICAL_DIM)
+        self.assertEqual(service.active_provider, "lexical")
+        self.assertIn("lexical", service.active_source)
+
+    def test_local_minilm_is_loaded_with_local_files_only(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import MagicMock, patch
+
+        from django.test import override_settings
+
+        from rag.embeddings import LEXICAL_DIM, get_embedding_service
+
+        fake_model = MagicMock()
+        fake_model.encode.return_value = [[0.05] * LEXICAL_DIM]
+        with TemporaryDirectory() as raw:
+            model_dir = Path(raw) / "minilm"
+            model_dir.mkdir()
+            (model_dir / "modules.json").write_text("[]", encoding="utf-8")
+            with override_settings(
+                EMBEDDING_PROVIDER="sentence-transformers",
+                EMBEDDING_MODEL="all-MiniLM-L6-v2",
+                EMBEDDING_MODEL_PATH=str(model_dir),
+            ):
+                with patch("rag.embeddings._load_sentence_transformer", return_value=fake_model) as loader:
+                    service = get_embedding_service()
+                    vectors = service.embed_texts(["Attendance policy"])
+        loader.assert_called_once_with(str(model_dir), local_files_only=True)
+        self.assertEqual(service.active_provider, "sentence-transformers")
+        self.assertTrue(str(model_dir) in service.active_source)
+        self.assertEqual(len(vectors[0]), LEXICAL_DIM)

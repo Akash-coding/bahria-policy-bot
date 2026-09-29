@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from accounts.permissions import IsStaffUser
 from chat.models import ChatMessage, ChatSession, MessageRole
 from documents.models import Document, DocumentStatus
+from rag.embeddings import embedding_status
 from rag.groq_client import check_groq
 from rag.vectorstore import get_vector_store
 
@@ -15,6 +16,7 @@ from rag.vectorstore import get_vector_store
 @permission_classes([AllowAny])
 def health(_request):
     groq = check_groq()
+    embeddings = embedding_status()
     try:
         store = get_vector_store()
         indexed_chunks = store.count()
@@ -28,8 +30,10 @@ def health(_request):
             "status": "ok",
             "service": "bahria-policy-bot",
             "groq": groq,
-            "embedding_provider": settings.EMBEDDING_PROVIDER,
-            "embedding_model": settings.EMBEDDING_MODEL,
+            "embedding_provider": embeddings.get("active_provider") or settings.EMBEDDING_PROVIDER,
+            "embedding_model": embeddings.get("active_model") or settings.EMBEDDING_MODEL,
+            "embedding_source": embeddings.get("source") or "",
+            "embedding_local_path": embeddings.get("local_model_path") or "",
             "llm_model": settings.GROQ_MODEL,
             "indexed_chunks": indexed_chunks,
             "vector_dim": vector_dim,

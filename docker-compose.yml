@@ -33,7 +33,12 @@ services:
       GROQ_MAX_TOKENS: "800"
       EMBEDDING_PROVIDER: sentence-transformers
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      EMBEDDING_MODEL_PATH: ${EMBEDDING_MODEL_PATH:-}
+      EMBEDDING_ALLOW_DOWNLOAD: ${EMBEDDING_ALLOW_DOWNLOAD:-false}
+      HF_HOME: /srv/data/huggingface
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
       HF_HUB_DISABLE_XET: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
       MEDIA_ROOT: /srv/data/documents
       VECTOR_DB_PATH: /srv/data/chroma
     volumes:

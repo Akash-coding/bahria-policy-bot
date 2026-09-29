@@ -2,7 +2,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from documents.models import Document
-from rag.embeddings import get_embedding_service
+from rag.embeddings import embedding_status, get_embedding_service
 from rag.groq_client import check_groq
 from rag.pipeline import ProcessingError, process_document
 
@@ -36,10 +36,18 @@ class Command(BaseCommand):
             embed_model = settings.EMBEDDING_MODEL
 
         self.stdout.write(
-            f"Warming up {embed_model}. The first request can take a moment."
+            f"Warming up embeddings. Configured: {settings.EMBEDDING_PROVIDER} / {embed_model}."
         )
         get_embedding_service().embed_texts(["Bahria University policy"])
-        self.stdout.write(self.style.SUCCESS("Embedding model is ready."))
+        status = embedding_status()
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Embedding model is ready: "
+                f"provider={status.get('active_provider')} "
+                f"model={status.get('active_model')} "
+                f"source={status.get('source')}"
+            )
+        )
 
         documents = list(Document.objects.order_by("id"))
         if not documents:
