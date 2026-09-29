@@ -398,3 +398,43 @@ class FollowUpQuestionTests(SimpleTestCase):
         self.assertIsNotNone(declined)
         self.assertIn("skip", declined.lower())
         self.assertNotIn("repeat", declined.lower())
+
+
+class RetrievalGuardTests(SimpleTestCase):
+    def test_keeps_hits_when_topic_words_do_not_match(self):
+        from rag.retriever import _prefer_on_topic
+
+        hits = [
+            {
+                "content": "Merit awards need a CGPA of 3.50 for continuation of support.",
+                "metadata": {"document_title": "Awards"},
+                "relevance_score": 0.41,
+            }
+        ]
+        kept = _prefer_on_topic(hits, "What is the scholarship policy?")
+        self.assertEqual(kept, hits)
+
+    def test_standalone_questions_do_not_mix_old_user_turns(self):
+        from rag.retriever import _retrieval_query
+
+        history = [{"role": "user", "content": "What is the attendance policy?"}]
+        self.assertEqual(
+            _retrieval_query("What is the examination policy?", history),
+            "What is the examination policy?",
+        )
+        self.assertIn("attendance", _retrieval_query("tell me more", history).lower())
+
+    def test_model_not_found_still_uses_retrieved_excerpts(self):
+        excerpt = (
+            "Students must keep seventy five percent attendance to sit in the "
+            "final examination under the official handbook rule."
+        )
+        text = _finalize_answer(
+            NOT_FOUND_MESSAGE,
+            {
+                "hits": [{"content": excerpt, "metadata": {}}],
+                "retrieval": "vector",
+            },
+        )
+        self.assertNotEqual(text, NOT_FOUND_MESSAGE)
+        self.assertIn("seventy five", text.lower())

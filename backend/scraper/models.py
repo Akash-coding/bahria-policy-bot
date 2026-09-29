@@ -31,6 +31,9 @@ class WebsiteSource(models.Model):
     )
     progress_detail = models.CharField(max_length=255, blank=True, default="")
     page_count = models.PositiveIntegerField(default=0)
+    document_count = models.PositiveIntegerField(default=0)
+    image_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
     chunk_count = models.PositiveIntegerField(default=0)
     error_message = models.TextField(blank=True, default="")
     last_scraped_at = models.DateTimeField(null=True, blank=True)
@@ -63,6 +66,8 @@ class ScrapedPage(models.Model):
     content_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     source_url = models.URLField(max_length=800)
     parent_url = models.URLField(max_length=800, blank=True, default="")
+    image_url = models.URLField(max_length=800, blank=True, default="")
+    page_number = models.PositiveIntegerField(null=True, blank=True)
     file_type = models.CharField(max_length=16, default="html")
     status = models.CharField(
         max_length=16,

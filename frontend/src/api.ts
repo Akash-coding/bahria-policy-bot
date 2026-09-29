@@ -19,6 +19,8 @@ export type Source = {
   excerpt?: string;
   source_type?: string;
   source_url?: string | null;
+  image_url?: string | null;
+  file_type?: string | null;
 };
 
 export type ChatMessage = {
@@ -117,6 +119,8 @@ export type ScrapedPageRecord = {
   content_hash: string;
   scraped_at: string;
   error_message: string;
+  image_url?: string;
+  page_number?: number | null;
 };
 
 export type WebsiteRecord = {
@@ -128,6 +132,9 @@ export type WebsiteRecord = {
   status_label: string;
   progress_detail: string;
   page_count: number;
+  document_count?: number;
+  image_count?: number;
+  failed_count?: number;
   chunk_count: number;
   error_message: string;
   last_scraped_at: string | null;

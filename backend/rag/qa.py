@@ -393,9 +393,11 @@ def _usable_answer(text: str) -> str:
     if not (text or "").strip():
         return ""
     cleaned = sanitize_answer(text)
-    if not cleaned or cleaned == NOT_FOUND_MESSAGE:
+    if not cleaned:
         return ""
     if _contains_thinking(cleaned):
+        return ""
+    if NOT_FOUND_MESSAGE.lower() in cleaned.lower():
         return ""
     return cleaned
 
@@ -403,16 +405,18 @@ def _usable_answer(text: str) -> str:
 def _finalize_answer(answer: str, prepared: dict[str, Any], visible: str = "") -> str:
     shown = _usable_answer(visible)
     cleaned = _usable_answer(answer)
+    hits = prepared.get("hits") or []
     if shown:
         # Keep the streamed wording. Only extend it if the final text is the same answer, just longer.
         if cleaned and (cleaned.startswith(shown) or shown.startswith(cleaned)):
-            return cleaned if len(cleaned) >= len(shown) else shown
-        return shown
+            text = cleaned if len(cleaned) >= len(shown) else shown
+        else:
+            text = shown
+        return _prefer_excerpts_if_refused(text, hits)
     if cleaned:
-        return cleaned
+        return _prefer_excerpts_if_refused(cleaned, hits)
     if prepared.get("retrieval") == "chat":
         return _small_talk_fallback()
-    hits = prepared.get("hits") or []
     if hits:
         logger.info("Model returned no usable answer; using a short policy summary")
         return _extractive_answer(hits)
@@ -651,18 +655,24 @@ def _extractive_answer(hits: list[dict[str, Any]]) -> str:
 
 
 def _source_type_label(meta: dict[str, Any]) -> str:
-    source_type = (meta.get("source_type") or "").lower()
-    url = (meta.get("source_url") or "").strip()
-    if url:
-        if source_type == "pdf":
-            return "PDF"
+    source_type = (meta.get("source_type") or meta.get("file_type") or "").lower()
+    labels = {
+        "pdf": "PDF",
+        "word": "Word Document",
+        "doc": "Word Document",
+        "docx": "Word Document",
+        "text": "Text",
+        "txt": "Text",
+        "image": "Image",
+        "website": "Website",
+        "html": "Website",
+    }
+    if source_type in labels:
+        return labels[source_type]
+    if (meta.get("image_url") or "").strip():
+        return "Image"
+    if (meta.get("source_url") or "").strip():
         return "Website"
-    if source_type == "pdf":
-        return "PDF"
-    if source_type == "word":
-        return "Word Document"
-    if source_type == "text":
-        return "Text"
     return "Policy Document"
 
 
@@ -693,6 +703,8 @@ def _unique_sources(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "excerpt": (hit.get("content") or "")[:280],
                 "source_type": source_type,
                 "source_url": url or None,
+                "image_url": (meta.get("image_url") or "").strip() or None,
+                "file_type": meta.get("file_type") or None,
             }
         )
     return sources

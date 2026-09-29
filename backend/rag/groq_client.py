@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -257,6 +258,50 @@ def stream_generate(system_prompt: str, user_prompt: str) -> Iterator[str]:
     except requests.RequestException as exc:
         logger.exception("Groq streaming failed")
         raise GroqError(_groq_unreachable(exc)) from exc
+
+
+def extract_image_text(payload: bytes, mime: str = "image/jpeg", source_url: str = "") -> str:
+    model = (getattr(settings, "GROQ_VISION_MODEL", "") or "").strip()
+    if not model or model.lower() in {"off", "none", "0", "false"}:
+        return ""
+    if not payload or len(payload) < 800 or len(payload) > 4 * 1024 * 1024:
+        return ""
+    mime = (mime or "image/jpeg").split(";")[0].strip().lower()
+    if mime not in {"image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"}:
+        mime = "image/jpeg"
+    if mime == "image/jpg":
+        mime = "image/jpeg"
+    encoded = base64.b64encode(payload).decode("ascii")
+    prompt = (
+        "Extract all readable text from this image. "
+        "If it is a notice, poster, infographic, table, form, or scanned document, transcribe it faithfully. "
+        "Ignore logos and decoration. If there is no useful text, reply with EMPTY."
+    )
+    body = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}},
+                ],
+            }
+        ],
+        "temperature": 0.1,
+        "max_completion_tokens": 500,
+        "stream": False,
+    }
+    timeout = (10, min(int(getattr(settings, "GROQ_TIMEOUT", 120)), 45))
+    response = _post_chat(f"{_base_url()}/chat/completions", body, stream=False, timeout=timeout)
+    data = response.json()
+    choices = data.get("choices") or []
+    message = (choices[0].get("message") if choices else None) or {}
+    content = (message.get("content") or "").strip()
+    if not content or content.upper() == "EMPTY":
+        return ""
+    logger.info("Extracted %s characters from image %s", len(content), source_url or mime)
+    return content
 
 
 def _groq_unreachable(exc: Exception) -> str:

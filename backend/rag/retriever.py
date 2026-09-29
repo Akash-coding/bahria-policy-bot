@@ -31,6 +31,18 @@ def retrieve_policy_chunks(
         for hit in vector_hits
         if hit.get("relevance_score", 0) >= settings.SIMILARITY_THRESHOLD
     ]
+    if not relevant:
+        floor = min(0.12, settings.SIMILARITY_THRESHOLD)
+        relevant = [
+            hit
+            for hit in vector_hits
+            if float(hit.get("relevance_score") or 0) >= floor
+        ][: settings.RAG_TOP_K]
+        if relevant:
+            logger.info(
+                "Using weaker vector matches (best score=%.3f)",
+                float(relevant[0].get("relevance_score") or 0),
+            )
     relevant = _prefer_on_topic(relevant, question)
 
     if _confident(relevant, question):
@@ -155,11 +167,7 @@ def _prefer_on_topic(hits: list[dict[str, Any]], question: str) -> list[dict[str
     if not hits:
         return []
     matching = [hit for hit in hits if _on_topic(hit, question)]
-    if matching:
-        return matching
-    if extract_topics(question):
-        return []
-    return hits
+    return matching or hits
 
 
 def _ranked(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
@@ -176,7 +184,18 @@ def _ranked(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
     return sorted(hits, key=key)
 
 
+def _needs_history(question: str) -> bool:
+    words = (question or "").split()
+    if len(words) <= 4:
+        return True
+    if len(words) <= 10 and re.search(r"\b(this|that|it|those|these|same)\b", question or "", re.I):
+        return True
+    return False
+
+
 def _retrieval_query(question: str, history: list[dict[str, str]]) -> str:
+    if not _needs_history(question):
+        return question
     previous = [
         item["content"]
         for item in history

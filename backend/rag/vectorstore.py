@@ -115,10 +115,17 @@ class LocalVectorStore:
     def query(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
         items = list(self._load().values())
         if not items:
+            logger.info("Vector index is empty at %s", self.file)
             return []
         scored: list[dict[str, Any]] = []
+        skipped = 0
+        query_dim = len(embedding or [])
         for item in items:
-            score = _cosine(embedding, item.get("embedding") or [])
+            item_embedding = item.get("embedding") or []
+            if query_dim and len(item_embedding) != query_dim:
+                skipped += 1
+                continue
+            score = _cosine(embedding, item_embedding)
             scored.append(
                 {
                     "vector_id": item.get("id"),
@@ -128,6 +135,16 @@ class LocalVectorStore:
                     "relevance_score": score,
                 }
             )
+        if skipped:
+            logger.warning(
+                "Skipped %s of %s vectors because embedding size does not match the query (%s). "
+                "Re-index documents with the current embedding model.",
+                skipped,
+                len(items),
+                query_dim,
+            )
+        if not scored:
+            return []
         scored.sort(key=lambda row: row["relevance_score"], reverse=True)
         return scored[: max(top_k, 0)]
 

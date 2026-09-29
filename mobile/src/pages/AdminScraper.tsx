@@ -3,6 +3,24 @@ import { api, type WebsiteRecord } from "../api";
 
 const ACTIVE = new Set(["starting", "discovering", "scraping", "processing", "saving"]);
 
+const FILE_LABELS: Record<string, string> = {
+  html: "Page",
+  pdf: "PDF",
+  doc: "DOC",
+  docx: "DOCX",
+  txt: "Text",
+  image: "Image",
+};
+
+function scrapeStats(site: WebsiteRecord) {
+  return {
+    pages: site.page_count || 0,
+    documents: site.document_count || 0,
+    images: site.image_count || 0,
+    failed: site.failed_count || 0,
+  };
+}
+
 export function AdminScraper() {
   const [url, setUrl] = useState("");
   const [sites, setSites] = useState<WebsiteRecord[]>([]);
@@ -87,7 +105,7 @@ export function AdminScraper() {
         <div>
           <h1 className="page-title">Website scraper</h1>
           <p className="page-subtitle">
-            Crawl a university website, index its pages, and include them in chatbot answers.
+            Crawl a university website, including linked PDFs, Word files, and readable images, then include them in chatbot answers.
           </p>
         </div>
       </div>
@@ -117,6 +135,9 @@ export function AdminScraper() {
             <tr>
               <th>Website</th>
               <th>Pages</th>
+              <th>Docs</th>
+              <th>Images</th>
+              <th>Failed</th>
               <th>Chunks</th>
               <th>Last scraped</th>
               <th>Status</th>
@@ -126,7 +147,7 @@ export function AdminScraper() {
           <tbody>
             {sites.length === 0 ? (
               <tr>
-                <td colSpan={6}>No websites scraped yet.</td>
+                <td colSpan={9}>No websites scraped yet.</td>
               </tr>
             ) : (
               sites.map((site) => (
@@ -138,6 +159,9 @@ export function AdminScraper() {
                     <div className="muted-url">{site.seed_url}</div>
                   </td>
                   <td>{site.page_count}</td>
+                  <td>{site.document_count || 0}</td>
+                  <td>{site.image_count || 0}</td>
+                  <td>{site.failed_count || 0}</td>
                   <td>{site.chunk_count}</td>
                   <td>{site.last_scraped_at ? new Date(site.last_scraped_at).toLocaleString() : "—"}</td>
                   <td>
@@ -165,10 +189,28 @@ export function AdminScraper() {
       {detail ? (
         <div className="panel">
           <h2 className="page-title" style={{ fontSize: "1.1rem" }}>
-            Pages from {detail.domain}
+            Sources from {detail.domain}
           </h2>
           <p className="page-subtitle">{detail.status_label}. {detail.progress_detail}</p>
           {detail.error_message ? <div className="error">{detail.error_message}</div> : null}
+          <div className="scrape-stats">
+            <div className="scrape-stat">
+              <strong>{scrapeStats(detail).pages}</strong>
+              <span>Web pages processed</span>
+            </div>
+            <div className="scrape-stat">
+              <strong>{scrapeStats(detail).documents}</strong>
+              <span>Documents found / processed</span>
+            </div>
+            <div className="scrape-stat">
+              <strong>{scrapeStats(detail).images}</strong>
+              <span>Images found / processed</span>
+            </div>
+            <div className="scrape-stat">
+              <strong>{scrapeStats(detail).failed}</strong>
+              <span>Failed files</span>
+            </div>
+          </div>
           <table>
             <thead>
               <tr>
@@ -182,13 +224,14 @@ export function AdminScraper() {
             <tbody>
               {(detail.pages || []).map((page) => (
                 <tr key={page.id}>
-                  <td>{page.title || "Untitled page"}</td>
+                  <td>{page.title || "Untitled source"}</td>
                   <td>
                     <a href={page.source_url || page.url} target="_blank" rel="noreferrer">
                       {page.url}
                     </a>
+                    {page.error_message ? <div className="muted-url">{page.error_message}</div> : null}
                   </td>
-                  <td>{page.file_type}</td>
+                  <td>{FILE_LABELS[page.file_type] || page.file_type}</td>
                   <td>{page.chunk_count}</td>
                   <td>
                     <span className={`badge ${page.status}`}>{page.status}</span>

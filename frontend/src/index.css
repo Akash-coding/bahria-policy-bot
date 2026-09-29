@@ -490,29 +490,45 @@ button {
 
 .messages:has(.empty-state) {
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
 }
 
 .empty-state {
-  width: min(560px, 100%);
-  margin: 12px auto 0;
+  width: min(640px, 100%);
+  margin: 4vh auto 0;
   text-align: left;
 }
 
-.hero-hi {
-  margin: 8px 0 8px;
-  font-size: clamp(1.8rem, 6vw, 2.4rem);
-  font-weight: 800;
+.home-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--card));
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
+.hero-hi {
+  margin: 0 0 10px;
+  font-size: clamp(2rem, 6vw, 2.8rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  text-transform: none;
+}
+
 .hero-sub {
-  margin: 0 0 22px !important;
-  max-width: none !important;
+  margin: 0 0 28px !important;
+  max-width: 34rem !important;
   color: var(--muted) !important;
-  font-size: 0.98rem;
+  font-size: 1.02rem;
+  line-height: 1.55;
 }
 
 .bubble-row {
@@ -581,6 +597,7 @@ button {
 .suggestions,
 .topic-list {
   display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   text-align: left;
 }
@@ -591,12 +608,36 @@ button {
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 16px 18px;
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   color: inherit;
   text-align: left;
   backdrop-filter: blur(18px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.topic-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-2) 16%, var(--card));
+  font-size: 1.15rem;
+}
+
+.topic-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.home-hint {
+  margin: 18px 0 0 !important;
+  color: var(--muted) !important;
+  font-size: 0.86rem !important;
 }
 
 .suggestion:hover,
@@ -1332,6 +1373,34 @@ td {
   align-items: center;
 }
 
+.scrape-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 18px;
+}
+
+.scrape-stat {
+  background: color-mix(in srgb, var(--accent-2) 8%, var(--card));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.scrape-stat strong {
+  display: block;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+}
+
+.scrape-stat span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .muted-url {
   color: var(--muted);
   font-size: 0.78rem;
@@ -1408,6 +1477,10 @@ td {
   .suggestions,
   .topic-list {
     grid-template-columns: 1fr;
+  }
+
+  .scrape-stats {
+    grid-template-columns: 1fr 1fr;
   }
 
   .admin-shell {

@@ -7,10 +7,10 @@ import { ThemeToggle } from "../theme";
 import { stripThinking } from "../visibleAnswer";
 
 const PROMPT_CARDS = [
-  { title: "Attendance", subtitle: "How attendance and exams work", prompt: "What is the attendance policy?" },
-  { title: "Student leaves", subtitle: "How many leaves can a student take?", prompt: "How many leaves can a student take?" },
-  { title: "Examinations", subtitle: "Rules for papers and grading", prompt: "What is the examination policy?" },
-  { title: "Who are you?", subtitle: "Meet the Bahria policy assistant", prompt: "Who are you?" },
+  { title: "Attendance", subtitle: "Classes, shortfall, and exams", prompt: "What is the attendance policy?", icon: "📅" },
+  { title: "Student leaves", subtitle: "Casual, medical, and semester leave", prompt: "How many leaves can a student take?", icon: "📝" },
+  { title: "Examinations", subtitle: "Papers, grading, and retakes", prompt: "What is the examination policy?", icon: "🎓" },
+  { title: "Who are you?", subtitle: "Meet the Bahria policy assistant", prompt: "Who are you?", icon: "💬" },
 ];
 
 function toSpokenText(markdown: string) {
@@ -524,16 +524,25 @@ export function ChatPage() {
             </div>
           ) : messages.length === 0 && !busy ? (
             <div className="empty-state">
-              <h2 className="hero-hi">Hi {helloName}!</h2>
-              <p className="hero-sub">What do you want to chat about today?</p>
+              <span className="home-badge">Bahria Policy Assistant</span>
+              <h2 className="hero-hi">Hi, {helloName}</h2>
+              <p className="hero-sub">
+                Ask about attendance, exams, leaves, and other official Bahria University policies.
+              </p>
               <div className="topic-list">
                 {PROMPT_CARDS.map((item) => (
                   <button key={item.title} className="topic-card" onClick={() => void submit(item.prompt)}>
-                    <strong>{item.title}</strong>
-                    <span>{item.subtitle}</span>
+                    <span className="topic-icon" aria-hidden="true">
+                      {item.icon}
+                    </span>
+                    <span className="topic-copy">
+                      <strong>{item.title}</strong>
+                      <span>{item.subtitle}</span>
+                    </span>
                   </button>
                 ))}
               </div>
+              <p className="home-hint">Type a question or use the microphone. English and Urdu both work.</p>
             </div>
           ) : (
             <>

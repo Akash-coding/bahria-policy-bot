@@ -15,6 +15,14 @@ from rag.vectorstore import get_vector_store
 @permission_classes([AllowAny])
 def health(_request):
     groq = check_groq()
+    try:
+        store = get_vector_store()
+        indexed_chunks = store.count()
+        sample = store.all_items()[:1]
+        vector_dim = len((sample[0].get("embedding") or []) if sample else [])
+    except Exception:
+        indexed_chunks = 0
+        vector_dim = 0
     return Response(
         {
             "status": "ok",
@@ -23,6 +31,8 @@ def health(_request):
             "embedding_provider": settings.EMBEDDING_PROVIDER,
             "embedding_model": settings.EMBEDDING_MODEL,
             "llm_model": settings.GROQ_MODEL,
+            "indexed_chunks": indexed_chunks,
+            "vector_dim": vector_dim,
         }
     )
 
