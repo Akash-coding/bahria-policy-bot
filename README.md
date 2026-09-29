@@ -2,7 +2,7 @@
 
 A private **RAG (Retrieval-Augmented Generation)** assistant for Bahria University policies.
 
-**Building a new mobile/web app?** Use [API_README.md](API_README.md) — all backend endpoints, cookies, streaming, and production URL aliases.
+**Building a new mobile/web app?** Use [API_README.md](API_README.md) for endpoints. A checkable copy of the full app lives in [`mobile/`](mobile/README.md) (`npm run web` → http://localhost:8081/).
 
 Users ask policy questions in a chat UI. Answers are generated only from uploaded official documents (PDF, DOCX, TXT). Chat and embeddings run through the **Groq API**.
 

@@ -6,6 +6,7 @@ All secrets and runtime configuration come from environment variables.
 from __future__ import annotations
 
 import os
+import socket
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -50,6 +51,19 @@ def _env_list(name: str, default: str) -> list[str]:
 SECRET_KEY = _env("DJANGO_SECRET_KEY", "insecure-dev-key-change-in-production")
 DEBUG = _env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+
+
+def _lan_ipv4() -> str:
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("8.8.8.8", 80))
+        ip = probe.getsockname()[0]
+        probe.close()
+        if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+            return ip
+    except OSError:
+        pass
+    return ""
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -164,14 +178,30 @@ if DEBUG:
 
 CORS_ALLOWED_ORIGINS = _env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081,http://127.0.0.1:8081",
 )
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = _env_list(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081,http://127.0.0.1:8081,http://localhost:8000,http://127.0.0.1:8000",
 )
+
+if DEBUG:
+    _lan_ip = _lan_ipv4()
+    if _lan_ip:
+        if _lan_ip not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_lan_ip)
+        for origin in (
+            f"http://{_lan_ip}:8000",
+            f"http://{_lan_ip}:8081",
+            f"http://{_lan_ip}:5173",
+        ):
+            if origin not in CSRF_TRUSTED_ORIGINS:
+                CSRF_TRUSTED_ORIGINS.append(origin)
+            if origin not in CORS_ALLOWED_ORIGINS:
+                CORS_ALLOWED_ORIGINS.append(origin)
+
 CSRF_FAILURE_VIEW = "config.csrf.csrf_failure"
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Lax"

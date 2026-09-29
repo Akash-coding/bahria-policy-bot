@@ -25,6 +25,18 @@ media/
 node_modules/
 frontend/dist/
 frontend/.vite/
+mobile/dist/
+mobile/.vite/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/app/src/main/assets/www/
+mobile/android/app/src/main/res/values/lan.xml
+.android-build/
+BahriaAI.apk
+.npm-cache/
+.tmp/
 npm-debug.log*
 
 # Environment and secrets
