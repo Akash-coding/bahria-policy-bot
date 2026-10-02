@@ -424,6 +424,76 @@ class RetrievalGuardTests(SimpleTestCase):
         )
         self.assertIn("attendance", _retrieval_query("tell me more", history).lower())
 
+    def test_admission_cgpa_question_also_searches_scholarships(self):
+        from rag.retriever import _confident, _ranked, _retrieval_query
+        from rag.topics import expanded_topics, query_expansion
+
+        question = (
+            "i have 2.7 cgpa and i want to get admission in bahria university. "
+            "what should i do and what are the benefits bahria university is giving for this cgpa"
+        )
+        self.assertIn("scholarship", expanded_topics(question))
+        self.assertIn("scholarship", query_expansion(question).lower())
+        self.assertIn("scholarship", _retrieval_query(question, []).lower())
+
+        admission_hits = [
+            {
+                "content": (
+                    "Undergraduate admissions require an entry test, interview, "
+                    "and submission of the intermediate result card at the campus office."
+                ),
+                "metadata": {"document_title": "Admissions"},
+                "relevance_score": 0.82,
+            },
+            {
+                "content": (
+                    "Applicants must complete the online admission form and pay "
+                    "the processing fee before the published deadline for the semester."
+                ),
+                "metadata": {"document_title": "Admissions"},
+                "relevance_score": 0.80,
+            },
+        ]
+        self.assertFalse(_confident(admission_hits, question))
+
+        mixed = admission_hits + [
+            {
+                "content": (
+                    "Need based scholarships remain active when the student keeps "
+                    "a minimum CGPA of 2.50 in each semester of the degree program."
+                ),
+                "metadata": {"document_title": "Scholarships"},
+                "relevance_score": 0.40,
+            }
+        ]
+        ranked = _ranked(mixed, question)
+        self.assertIn("2.50", ranked[0]["content"])
+
+    def test_direct_scholarship_cgpa_question_stays_confident(self):
+        from rag.retriever import _confident, _retrieval_query
+
+        question = "i have 2.9 cgpa. am i eligible for scholarship?"
+        self.assertEqual(_retrieval_query(question, []), question)
+        hits = [
+            {
+                "content": (
+                    "Students may apply for a scholarship when their CGPA is at least "
+                    "2.50 and they meet the other published financial aid conditions."
+                ),
+                "metadata": {"document_title": "Scholarships"},
+                "relevance_score": 0.88,
+            },
+            {
+                "content": (
+                    "The scholarship office reviews applications each semester and "
+                    "notifies students after the results are declared by the exam branch."
+                ),
+                "metadata": {"document_title": "Scholarships"},
+                "relevance_score": 0.70,
+            },
+        ]
+        self.assertTrue(_confident(hits, question))
+
     def test_model_not_found_still_uses_retrieved_excerpts(self):
         excerpt = (
             "Students must keep seventy five percent attendance to sit in the "

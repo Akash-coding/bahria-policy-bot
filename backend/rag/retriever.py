@@ -8,7 +8,7 @@ from django.conf import settings
 
 from .embeddings import get_embedding_service
 from .graphstore import get_policy_graph
-from .topics import extract_topics, heading_in, query_terms
+from .topics import expanded_topics, extract_topics, heading_in, query_expansion, query_terms
 from .vectorstore import get_vector_store
 
 logger = logging.getLogger("rag")
@@ -55,7 +55,7 @@ def retrieve_policy_chunks(
             rebuild_graph_from_store()
         seed_ids = [str(hit.get("vector_id") or "") for hit in relevant]
         extra_ids = graph.expand(
-            query_topics=extract_topics(question),
+            query_topics=expanded_topics(question),
             seed_ids=seed_ids,
             limit=getattr(settings, "GRAPH_EXPAND_LIMIT", 6),
         )
@@ -88,6 +88,9 @@ def rebuild_graph_from_store() -> None:
     get_policy_graph().rebuild(items)
 
 
+_MUST_COVER = re.compile(r"\b(c?gpa|scholarship|scholarships|merit|stipend|concession)\b", re.I)
+
+
 def _confident(hits: list[dict[str, Any]], question: str) -> bool:
     min_hits = getattr(settings, "GRAPH_MIN_VECTOR_HITS", 2)
     strong = getattr(settings, "GRAPH_STRONG_SCORE", 0.45)
@@ -95,12 +98,29 @@ def _confident(hits: list[dict[str, Any]], question: str) -> bool:
         return False
     if float(hits[0].get("relevance_score") or 0) < strong:
         return False
+    if _missing_must_cover(hits, question):
+        return False
     terms = query_terms(question) - {"the", "and", "for", "what", "how"}
     if not terms:
         return True
     for hit in hits[:3]:
         content_terms = query_terms(hit.get("content") or "")
         if terms & content_terms:
+            return True
+    return False
+
+
+def _missing_must_cover(hits: list[dict[str, Any]], question: str) -> bool:
+    needed = {term.lower() for term in _MUST_COVER.findall(question or "")}
+    if not needed:
+        return False
+    blob = " ".join(_hit_blob(hit) for hit in hits).lower()
+    for term in needed:
+        if term in {"gpa", "cgpa"}:
+            if "gpa" not in blob:
+                return True
+            continue
+        if term not in blob:
             return True
     return False
 
@@ -157,7 +177,7 @@ def _hit_blob(hit: dict[str, Any]) -> str:
 
 
 def _on_topic(hit: dict[str, Any], question: str) -> bool:
-    q_topics = extract_topics(question)
+    q_topics = expanded_topics(question)
     if not q_topics:
         return True
     return bool(q_topics & extract_topics(_hit_blob(hit)))
@@ -172,16 +192,77 @@ def _prefer_on_topic(hits: list[dict[str, Any]], question: str) -> list[dict[str
 
 def _ranked(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
     terms = query_terms(question) - {"the", "and", "for", "what", "how", "tell", "line", "definition"}
-    q_topics = extract_topics(question)
+    q_topics = expanded_topics(question)
 
     def key(hit: dict[str, Any]) -> tuple:
         blob = _hit_blob(hit)
         topic_hit = 1 if q_topics and q_topics & extract_topics(blob) else 0
         term_hit = 1 if terms and terms & query_terms(blob) else 0
+        must_hit = 0 if _missing_must_cover([hit], question) else 1
         score = float(hit.get("relevance_score") or 0)
-        return (-topic_hit, -term_hit, -score)
+        return (-must_hit, -topic_hit, -term_hit, -score)
 
-    return sorted(hits, key=key)
+    ordered = sorted(hits, key=key)
+    return _diversify(ordered, question)
+
+
+def _diversify(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
+    if len(hits) <= 2:
+        return hits
+    must = [hit for hit in hits if not _missing_must_cover([hit], question)]
+    others = [hit for hit in hits if id(hit) not in {id(item) for item in must}]
+    if must and others:
+        mixed: list[dict[str, Any]] = []
+        while must or others:
+            if must:
+                mixed.append(must.pop(0))
+            if others:
+                mixed.append(others.pop(0))
+        return mixed
+    return _interleave_by_topic(hits, question)
+
+
+def _interleave_by_topic(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
+    topics = sorted(expanded_topics(question))
+    if len(topics) < 2:
+        return hits
+    grouped: dict[str, list[dict[str, Any]]] = {topic: [] for topic in topics}
+    leftover: list[dict[str, Any]] = []
+    for hit in hits:
+        hit_topics = extract_topics(_hit_blob(hit))
+        placed = False
+        for topic in topics:
+            if topic in hit_topics:
+                grouped[topic].append(hit)
+                placed = True
+                break
+        if not placed:
+            leftover.append(hit)
+    mixed: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    while len(mixed) < len(hits):
+        progressed = False
+        for topic in topics:
+            bucket = grouped[topic]
+            while bucket:
+                hit = bucket.pop(0)
+                marker = id(hit)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                mixed.append(hit)
+                progressed = True
+                break
+        if leftover:
+            hit = leftover.pop(0)
+            marker = id(hit)
+            if marker not in seen:
+                seen.add(marker)
+                mixed.append(hit)
+                progressed = True
+        if not progressed:
+            break
+    return mixed or hits
 
 
 def _needs_history(question: str) -> bool:
@@ -194,13 +275,16 @@ def _needs_history(question: str) -> bool:
 
 
 def _retrieval_query(question: str, history: list[dict[str, str]]) -> str:
-    if not _needs_history(question):
-        return question
-    previous = [
-        item["content"]
-        for item in history
-        if item.get("role") == "user" and item.get("content")
-    ]
-    if not previous:
-        return question
-    return f"{previous[-1]}\n{question}"
+    if _needs_history(question):
+        previous = [
+            item["content"]
+            for item in history
+            if item.get("role") == "user" and item.get("content")
+        ]
+        base = f"{previous[-1]}\n{question}" if previous else question
+    else:
+        base = question
+    extra = query_expansion(question)
+    if extra:
+        return f"{base}\n{extra}"
+    return base

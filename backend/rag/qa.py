@@ -78,6 +78,7 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
         "hits": relevant,
         "sources": _unique_sources(relevant),
         "retrieval": method,
+        "question": question,
     }
 
 
@@ -413,14 +414,14 @@ def _finalize_answer(answer: str, prepared: dict[str, Any], visible: str = "") -
             text = cleaned if len(cleaned) >= len(shown) else shown
         else:
             text = shown
-        return _prefer_excerpts_if_refused(text, hits)
+        return _prefer_excerpts_if_refused(text, hits, prepared.get("question") or "")
     if cleaned:
-        return _prefer_excerpts_if_refused(cleaned, hits)
+        return _prefer_excerpts_if_refused(cleaned, hits, prepared.get("question") or "")
     if prepared.get("retrieval") == "chat":
         return _small_talk_fallback()
     if hits:
         logger.info("Model returned no usable answer; using a short policy summary")
-        return _extractive_answer(hits)
+        return _extractive_answer(hits, prepared.get("question") or "")
     return NOT_FOUND_MESSAGE
 
 
@@ -431,11 +432,13 @@ def _small_talk_fallback() -> str:
     )
 
 
-def _prefer_excerpts_if_refused(answer: str, hits: list[dict[str, Any]]) -> str:
+def _prefer_excerpts_if_refused(
+    answer: str, hits: list[dict[str, Any]], question: str = ""
+) -> str:
     """If the model refuses but retrieval already found policy text, show those excerpts."""
     if hits and NOT_FOUND_MESSAGE.lower() in (answer or "").lower():
         logger.info("Model refused despite retrieved policy excerpts; returning excerpts")
-        return _extractive_answer(hits)
+        return _extractive_answer(hits, question)
     return answer
 
 
@@ -636,18 +639,18 @@ def _build_context(hits: list[dict[str, Any]]) -> str:
     return "\n\n---\n\n".join(parts) if parts else "(no policy excerpts)"
 
 
-def _extractive_answer(hits: list[dict[str, Any]]) -> str:
-    sentences: list[str] = []
-    for hit in hits[:4]:
+def _extractive_answer(hits: list[dict[str, Any]], question: str = "") -> str:
+    wants_gpa = bool(re.search(r"\bc?gpa\b", question or "", re.I))
+    scored: list[tuple[int, str]] = []
+    for hit in hits[:8]:
         text = re.sub(r"\s+", " ", normalize_policy_text(hit.get("content") or ""))
         for part in re.split(r"(?<=[.!?])\s+", text):
             if len(part) < 40:
                 continue
-            sentences.append(part.strip())
-            if len(sentences) >= 3:
-                break
-        if len(sentences) >= 3:
-            break
+            boost = 1 if wants_gpa and re.search(r"\bc?gpa\b", part, re.I) else 0
+            scored.append((boost, part.strip()))
+    scored.sort(key=lambda item: -item[0])
+    sentences = [part for _boost, part in scored[:3]]
     if not sentences:
         return NOT_FOUND_MESSAGE
     return (

@@ -15,8 +15,26 @@ TOPIC_ALIASES: dict[str, tuple[str, ...]] = {
     "semester": ("semester", "freeze", "defer", "withdrawal"),
     "grade": ("grade", "grading", "gpa", "transcript"),
     "conduct": ("conduct", "ethics", "code of conduct"),
-    "scholarship": ("scholarship", "financial aid", "stipend"),
+    "scholarship": (
+        "scholarship",
+        "scholarships",
+        "financial aid",
+        "stipend",
+        "merit award",
+        "fee concession",
+    ),
 }
+
+_GPA_TERM = re.compile(r"\bc?gpa\b", re.I)
+_AID_HINT = re.compile(
+    r"\b(benefit|benefits|scholarship|scholarships|merit|concession|"
+    r"discount|stipend|financial aid|eligible|eligibility)\b",
+    re.I,
+)
+_ADMISSION_HINT = re.compile(
+    r"\b(admission|admissions|apply|enrol|enroll|want to get)\b",
+    re.I,
+)
 
 _HEADING = re.compile(
     r"^(?:"
@@ -48,3 +66,34 @@ def extract_topics(*texts: str) -> set[str]:
 
 def query_terms(text: str) -> set[str]:
     return {token for token in _TOKEN.findall((text or "").lower()) if len(token) > 2}
+
+
+def expanded_topics(text: str) -> set[str]:
+    """Topics to search for, including implied links such as CGPA + admission → scholarship."""
+    topics = extract_topics(text)
+    if _GPA_TERM.search(text or "") and (
+        "admission" in topics
+        or "fee" in topics
+        or _AID_HINT.search(text or "")
+        or _ADMISSION_HINT.search(text or "")
+    ):
+        topics.add("scholarship")
+    return topics
+
+
+def query_expansion(text: str) -> str:
+    """Extra search words so compound questions still retrieve the related policy."""
+    if not _GPA_TERM.search(text or ""):
+        return ""
+    if not (
+        "admission" in extract_topics(text)
+        or _AID_HINT.search(text or "")
+        or _ADMISSION_HINT.search(text or "")
+    ):
+        return ""
+    if re.search(r"\bscholarships?\b", text or "", re.I):
+        return ""
+    return (
+        "scholarship merit award financial aid fee concession "
+        "CGPA eligibility admission requirements"
+    )
