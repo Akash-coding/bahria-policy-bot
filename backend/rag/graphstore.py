@@ -145,6 +145,9 @@ class PolicyGraph:
         ordered = sorted(ranked, key=ranked.get, reverse=True)
         return ordered[:limit]
 
+    def topic_names(self) -> set[str]:
+        return set((self._load().get("topics") or {}).keys())
+
 
 @lru_cache(maxsize=1)
 def get_policy_graph() -> PolicyGraph:

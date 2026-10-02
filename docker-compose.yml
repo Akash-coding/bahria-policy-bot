@@ -55,6 +55,9 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         FRONTEND_BUILD: "20260929c"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx-proxy-params.conf:/etc/nginx/proxy-api-params.conf:ro
     depends_on:
       - backend
     ports:

@@ -573,30 +573,7 @@ def _follow_up_from_hits(
 
 
 def _indexed_source_follow_up() -> str:
-    from .vectorstore import VectorStoreError, get_vector_store
-
-    items: list[dict[str, Any]] = []
-    try:
-        items = get_vector_store().all_items()
-    except (VectorStoreError, OSError, FileNotFoundError):
-        items = []
-    topics: set[str] = set()
-    titles: list[str] = []
-    seen_titles: set[str] = set()
-    for item in items[:120]:
-        meta = item.get("metadata") or {}
-        content = item.get("document") or item.get("content") or ""
-        title = str(meta.get("document_title") or "").strip()
-        topics |= extract_topics(
-            content,
-            title,
-            str(meta.get("section") or ""),
-            str(meta.get("category") or ""),
-        )
-        key = title.lower()
-        if title and len(title) > 4 and key not in seen_titles:
-            seen_titles.add(key)
-            titles.append(title)
+    topics, titles = _indexed_handbook_hints()
     preferred = (
         "attendance",
         "examination",
@@ -615,6 +592,52 @@ def _indexed_source_follow_up() -> str:
     if titles:
         return f"Would you like me to explain {titles[0]}?"
     return "Would you like an attendance, exam, fee, or leave rule from the handbook?"
+
+
+def _indexed_handbook_hints() -> tuple[set[str], list[str]]:
+    topics: set[str] = set()
+    titles: list[str] = []
+    try:
+        from .graphstore import get_policy_graph
+
+        graph = get_policy_graph()
+        if graph.file.exists():
+            topics |= graph.topic_names()
+    except Exception:
+        logger.info("Could not read policy graph topics for a grounded follow-up")
+    if topics:
+        return topics, titles
+    try:
+        from .vectorstore import get_vector_store
+
+        store = get_vector_store()
+        path = getattr(store, "file", None)
+        loaded = getattr(store, "_items", None)
+        if path is not None and loaded is None:
+            try:
+                if path.exists() and path.stat().st_size > 2_000_000:
+                    return set(), []
+            except OSError:
+                return set(), []
+        items = store.all_items()[:80]
+    except Exception:
+        return set(), []
+    seen_titles: set[str] = set()
+    for item in items:
+        meta = item.get("metadata") or {}
+        content = item.get("document") or item.get("content") or ""
+        title = str(meta.get("document_title") or "").strip()
+        topics |= extract_topics(
+            content,
+            title,
+            str(meta.get("section") or ""),
+            str(meta.get("category") or ""),
+        )
+        key = title.lower()
+        if title and len(title) > 4 and key not in seen_titles:
+            seen_titles.add(key)
+            titles.append(title)
+    return topics, titles
 
 
 def _pick_follow_up(
