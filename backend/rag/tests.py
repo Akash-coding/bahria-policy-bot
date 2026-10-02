@@ -399,6 +399,63 @@ class FollowUpQuestionTests(SimpleTestCase):
         self.assertIn("skip", declined.lower())
         self.assertNotIn("repeat", declined.lower())
 
+    def test_yes_i_want_to_check_continues_last_offer(self):
+        history = [
+            {"role": "user", "content": "hello how are you?"},
+            {
+                "role": "assistant",
+                "content": (
+                    "Assalam o Alaikum, I am doing well.\n\n"
+                    "Would you like me to explain the attendance policy from the handbook?"
+                ),
+            },
+        ]
+        resolved, declined = _continue_from_short_reply("yes i want to check", history)
+        self.assertIsNone(declined)
+        self.assertIn("attendance", resolved.lower())
+
+    def test_greeting_follow_up_uses_indexed_topics_not_pets(self):
+        class FakeStore:
+            def all_items(self):
+                return [
+                    {
+                        "content": "Students must keep 75 percent attendance to sit the final exam.",
+                        "metadata": {"document_title": "Attendance Policy"},
+                    }
+                ]
+
+        with patch(
+            "rag.qa.generate_answer",
+            return_value=(
+                "Assalam o Alaikum, I am doing well and am happy to assist you!\n\n"
+                "Do you want to check the rules about bringing pets into the dorms?"
+            ),
+        ):
+            with patch("rag.vectorstore.get_vector_store", return_value=FakeStore()):
+                result = answer_question("hello how are you?")
+        lowered = result["answer"].lower()
+        self.assertNotIn("pets", lowered)
+        self.assertNotIn("dorms", lowered)
+        self.assertIn("attendance", lowered)
+
+    def test_follow_up_stays_inside_retrieved_sources(self):
+        hits = [
+            {
+                "content": "Merit awards need a CGPA of 3.50 for continuation of support.",
+                "metadata": {"document_title": "Scholarship Policy"},
+                "relevance_score": 0.9,
+            }
+        ]
+        text = _ensure_follow_up(
+            "What GPA is required for a scholarship?",
+            "Merit awards need a CGPA of 3.50.\n\nWould you like campus gym facilities?",
+            hits=hits,
+        )
+        self.assertNotIn("gym", text.lower())
+        self.assertIn("3.50", text.lower())
+        _main, follow = _split_follow_up(text)
+        self.assertTrue(follow.endswith("?"))
+
 
 class RetrievalGuardTests(SimpleTestCase):
     def test_keeps_hits_when_topic_words_do_not_match(self):

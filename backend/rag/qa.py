@@ -18,7 +18,7 @@ from .prompts import (
     USER_PROMPT_TEMPLATE,
 )
 from .retriever import retrieve_policy_chunks
-from .topics import extract_topics
+from .topics import extract_topics, query_terms
 from .vectorstore import VectorStoreError
 
 logger = logging.getLogger("rag")
@@ -109,7 +109,9 @@ def answer_question(question: str, history: list[dict[str, str]] | None = None) 
     prepared = prepare_answer(question, history)
     follow_topic, _declined = _continue_from_short_reply(question, history or [])
     if prepared["mode"] == "ready":
-        answer = _ensure_follow_up(follow_topic, prepared["answer"])
+        answer = _ensure_follow_up(
+            follow_topic, prepared["answer"], hits=prepared.get("hits") or []
+        )
         return {
             "answer": answer,
             "sources": prepared["sources"],
@@ -122,7 +124,11 @@ def answer_question(question: str, history: list[dict[str, str]] | None = None) 
     except GroqError as exc:
         logger.warning("Groq unavailable; using a local fallback: %s", exc)
         answer = ""
-    answer = _ensure_follow_up(follow_topic, _finalize_answer(answer, prepared))
+    answer = _ensure_follow_up(
+        follow_topic,
+        _finalize_answer(answer, prepared),
+        hits=prepared.get("hits") or [],
+    )
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
     _log_answer_outcome(prepared, found)
@@ -140,7 +146,9 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
     if prepared["mode"] == "ready":
         yield {
             "type": "done",
-            "answer": _ensure_follow_up(follow_topic, prepared["answer"]),
+            "answer": _ensure_follow_up(
+                follow_topic, prepared["answer"], hits=prepared.get("hits") or []
+            ),
             "sources": prepared["sources"],
             "found": prepared["found"],
         }
@@ -162,7 +170,9 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
         answer = sanitize_answer(raw) if raw.strip() else ""
 
     answer = _ensure_follow_up(
-        follow_topic, _finalize_answer(answer, prepared, visible=last_visible)
+        follow_topic,
+        _finalize_answer(answer, prepared, visible=last_visible),
+        hits=prepared.get("hits") or [],
     )
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
@@ -290,7 +300,13 @@ def _last_offered_question(history: list[dict[str, str]]) -> str:
 
 def _is_short_yes(text: str) -> bool:
     stripped = (text or "").strip()
-    return bool(stripped) and len(stripped) <= 48 and bool(_SHORT_YES.match(stripped))
+    if not stripped or len(stripped) > 60:
+        return False
+    if _POLICY_HINT.search(stripped):
+        return bool(_SHORT_YES.match(stripped))
+    if _SHORT_YES.match(stripped):
+        return True
+    return bool(re.match(r"^\s*yes\b.{0,40}$", stripped, re.I))
 
 
 def _is_short_no(text: str) -> bool:
@@ -364,17 +380,11 @@ def _follow_up_from_query(question: str, answer: str) -> str:
     if _IDENTITY.search(question or "") and not _POLICY_HINT.search(question or ""):
         return "Which handbook policy should I explain first?"
     if _is_small_talk(question or ""):
-        if re.search(r"thank", lowered_q):
-            return "Should I also explain a related deadline from the handbook?"
-        if re.search(r"bye|goodbye|see you", lowered_q):
-            return "Before you go, should I look up one handbook rule?"
-        if re.search(r"how are you", lowered_q):
-            return "Which campus policy can I help you with right now?"
-        return "Would you like the attendance rule, or a different handbook policy?"
+        return _indexed_source_follow_up()
     if NOT_FOUND_MESSAGE.lower() in lowered_a:
         if topic:
             return f"Would you like me to look up a related {topic} rule from the handbook?"
-        return "Would you like to ask this as a specific attendance, exam, fee, or leave policy?"
+        return _indexed_source_follow_up()
     if percents and topic:
         return f"What happens if this {topic} requirement falls below {percents[0]}%?"
     if gpas:
@@ -392,9 +402,9 @@ def _follow_up_from_query(question: str, answer: str) -> str:
     snippet = re.sub(r"\s+", " ", (question or "").strip()).rstrip("?.!")
     if len(snippet) > 70:
         snippet = snippet[:67].rsplit(" ", 1)[0]
-    if snippet:
+    if snippet and not _is_small_talk(question or "") and not _GREETING_START.match(question or ""):
         return f"Would you like more detail about {snippet.lower()}?"
-    return "Which related university policy should I explain next?"
+    return _indexed_source_follow_up()
 
 
 def _split_follow_up(text: str) -> tuple[str, str]:
@@ -417,7 +427,9 @@ def _split_follow_up(text: str) -> tuple[str, str]:
     return main, ""
 
 
-def _ensure_follow_up(question: str, answer: str) -> str:
+def _ensure_follow_up(
+    question: str, answer: str, hits: list[dict[str, Any]] | None = None
+) -> str:
     text = (answer or "").strip()
     if not text:
         return text
@@ -425,14 +437,209 @@ def _ensure_follow_up(question: str, answer: str) -> str:
         main, _existing = _split_follow_up(text)
         return main
     main, existing = _split_follow_up(text)
-    if existing:
-        return f"{main}\n\n{existing}"
-    if main.endswith("?"):
+    if main.endswith("?") and not existing:
         return main
-    follow = _follow_up_from_query(question, main)
+    follow = _pick_follow_up(question, main, hits or [], existing)
     if not follow:
         return main
     return f"{main}\n\n{follow}"
+
+
+_FOLLOW_SKIP = {
+    "the",
+    "and",
+    "for",
+    "you",
+    "your",
+    "would",
+    "like",
+    "want",
+    "check",
+    "know",
+    "tell",
+    "more",
+    "also",
+    "this",
+    "that",
+    "from",
+    "with",
+    "about",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "how",
+    "does",
+    "happen",
+    "please",
+    "related",
+    "next",
+    "step",
+    "into",
+    "bringing",
+    "rules",
+    "rule",
+    "can",
+    "could",
+    "should",
+    "have",
+    "any",
+    "other",
+    "there",
+    "looking",
+    "information",
+    "specific",
+}
+
+
+def _source_blob(hits: list[dict[str, Any]], extra: str = "") -> str:
+    parts = [extra or ""]
+    for hit in hits[:6]:
+        meta = hit.get("metadata") or {}
+        parts.extend(
+            [
+                hit.get("content") or "",
+                str(meta.get("document_title") or ""),
+                str(meta.get("section") or ""),
+                str(meta.get("category") or ""),
+            ]
+        )
+    return " ".join(parts)
+
+
+def _follow_up_is_grounded(follow: str, hits: list[dict[str, Any]], answer: str) -> bool:
+    if not (follow or "").strip():
+        return False
+    blob = _source_blob(hits, answer).lower()
+    if not blob.strip():
+        return False
+    follow_topics = extract_topics(follow)
+    source_topics = extract_topics(blob)
+    if follow_topics and follow_topics <= source_topics:
+        return True
+    distinctive = query_terms(follow) - _FOLLOW_SKIP
+    if not distinctive:
+        return bool(follow_topics & source_topics)
+    return bool(distinctive & query_terms(blob))
+
+
+def _follow_up_from_hits(
+    hits: list[dict[str, Any]], question: str, answer: str
+) -> str:
+    if not hits:
+        return ""
+    blob = _source_blob(hits, answer)
+    lowered = blob.lower()
+    percents = re.findall(r"(\d+(?:\.\d+)?)\s*%", blob)
+    gpas = re.findall(r"(\d+(?:\.\d+)?)\s*(?:gpa|cgpa)", lowered)
+    days = re.findall(r"(\d+)\s+days?", lowered)
+    topics = extract_topics(blob, question or "")
+    topic = ""
+    for name in (
+        "attendance",
+        "examination",
+        "scholarship",
+        "admission",
+        "leave",
+        "fee",
+        "hostel",
+        "probation",
+    ):
+        if name in topics:
+            topic = "exam" if name == "examination" else name
+            break
+    if not topic and topics:
+        topic = sorted(topics)[0]
+    if percents and topic:
+        return f"Would you like to know what happens if this {topic} requirement falls below {percents[0]}%?"
+    if gpas:
+        return f"Would you like to know what happens if the CGPA falls below {gpas[0]}?"
+    if days and topic:
+        return f"Would you like the next step for this {topic} rule within those {days[0]} days?"
+    titles: list[str] = []
+    seen: set[str] = set()
+    for hit in hits[:4]:
+        title = str((hit.get("metadata") or {}).get("document_title") or "").strip()
+        key = title.lower()
+        if title and len(title) > 4 and key not in seen:
+            seen.add(key)
+            titles.append(title)
+    if titles:
+        return f"Would you like more detail from {titles[0]}?"
+    if topic:
+        return f"Would you like the next step related to this {topic} policy?"
+    return ""
+
+
+def _indexed_source_follow_up() -> str:
+    from .vectorstore import VectorStoreError, get_vector_store
+
+    items: list[dict[str, Any]] = []
+    try:
+        items = get_vector_store().all_items()
+    except (VectorStoreError, OSError, FileNotFoundError):
+        items = []
+    topics: set[str] = set()
+    titles: list[str] = []
+    seen_titles: set[str] = set()
+    for item in items[:120]:
+        meta = item.get("metadata") or {}
+        content = item.get("document") or item.get("content") or ""
+        title = str(meta.get("document_title") or "").strip()
+        topics |= extract_topics(
+            content,
+            title,
+            str(meta.get("section") or ""),
+            str(meta.get("category") or ""),
+        )
+        key = title.lower()
+        if title and len(title) > 4 and key not in seen_titles:
+            seen_titles.add(key)
+            titles.append(title)
+    preferred = (
+        "attendance",
+        "examination",
+        "scholarship",
+        "admission",
+        "leave",
+        "fee",
+        "hostel",
+        "discipline",
+        "semester",
+    )
+    labels = {"examination": "exam", "semester": "semester freeze"}
+    for name in preferred:
+        if name in topics:
+            return f"Would you like me to explain the {labels.get(name, name)} policy from the handbook?"
+    if titles:
+        return f"Would you like me to explain {titles[0]}?"
+    return "Would you like an attendance, exam, fee, or leave rule from the handbook?"
+
+
+def _pick_follow_up(
+    question: str,
+    main: str,
+    hits: list[dict[str, Any]],
+    existing: str,
+) -> str:
+    if existing and _follow_up_is_grounded(existing, hits, main):
+        return existing
+    from_hits = _follow_up_from_hits(hits, question, main)
+    if from_hits:
+        return from_hits
+    if _is_small_talk(question or "") or (
+        _IDENTITY.search(question or "") and not _POLICY_HINT.search(question or "")
+    ):
+        return _indexed_source_follow_up()
+    generated = _follow_up_from_query(question, main)
+    if generated and _follow_up_is_grounded(generated, hits, main):
+        return generated
+    if generated and not hits and _follow_up_is_grounded(generated, [], main):
+        return generated
+    if generated and not hits and not _is_small_talk(question or ""):
+        return generated
+    return from_hits or _indexed_source_follow_up()
 
 
 def _usable_answer(text: str) -> str:
