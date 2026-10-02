@@ -857,8 +857,26 @@ def sanitize_answer(text: str) -> str:
     """Keep only the user-facing policy answer; drop model reasoning and source lines."""
     cleaned = _drop_reasoning(_strip_think_tags(text))
     cleaned = normalize_policy_text(cleaned)
+    cleaned = _strip_website_mentions(cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip() or NOT_FOUND_MESSAGE
+
+
+_WEBSITE_SENTENCE = re.compile(
+    r"(?i)(?:^|[.!?]\s+)([^.!?\n]*(?:visit|see|check|refer(?:\s+to)?|go\s+to)\s+"
+    r"(?:the\s+)?(?:official\s+)?(?:university\s+)?website[^.!?\n]*[.!?])"
+)
+_WEBSITE_WORD = re.compile(r"(?i)\b(?:web\s*)?sites?\b")
+_URL = re.compile(r"https?://\S+|www\.\S+|bahria\.edu\.pk\S*", re.I)
+
+
+def _strip_website_mentions(text: str) -> str:
+    cleaned = _WEBSITE_SENTENCE.sub(".", text)
+    cleaned = _URL.sub("", cleaned)
+    cleaned = re.sub(r"(?i)\b(?:official\s+)?(?:university\s+)?website\s+sources\b", "", cleaned)
+    if _WEBSITE_WORD.search(cleaned) and re.search(r"(?i)\b(visit|refer|check|see|go to)\b", cleaned):
+        cleaned = _WEBSITE_WORD.sub("", cleaned)
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
 
 
 def _build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
@@ -888,15 +906,12 @@ def _build_context(hits: list[dict[str, Any]]) -> str:
         meta = hit.get("metadata") or {}
         title = normalize_policy_text(meta.get("document_title") or "Untitled source")
         source_type = _source_type_label(meta)
-        url = (meta.get("source_url") or "").strip()
         page = meta.get("page_number")
         page_label = f"page {page}" if isinstance(page, int) and page > 0 else ""
         section = (meta.get("section") or "").strip()
         version = meta.get("version") or ""
         header = f"[{index}] {source_type}: {title}"
-        if url:
-            header += f" | {url}"
-        elif page_label:
+        if page_label:
             header += f" | {page_label}"
         if section:
             header += f" | section: {section}"

@@ -68,6 +68,13 @@ class AnswerCleanupTests(SimpleTestCase):
         self.assertNotIn("The user is asking", cleaned)
         self.assertNotIn("Source:", cleaned)
 
+    def test_unknown_topic_says_no_idea_without_mentioning_website(self):
+        self.assertNotIn("website", NOT_FOUND_MESSAGE.lower())
+        cleaned = sanitize_answer("Please visit the official website at https://bahria.edu.pk/admissions for details.")
+        self.assertNotIn("website", cleaned.lower())
+        self.assertNotIn("bahria.edu.pk", cleaned.lower())
+        self.assertNotIn("http", cleaned.lower())
+
     def test_thought_tags_are_removed(self):
         raw = (
             "<unused94>thought hidden analysis <unused95>"

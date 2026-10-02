@@ -44,6 +44,16 @@ def retrieve_policy_chunks(
                 float(relevant[0].get("relevance_score") or 0),
             )
     relevant = _prefer_on_topic(relevant, question)
+    if not _confident(relevant, question):
+        seen = {str(hit.get("vector_id") or "") for hit in relevant}
+        website_hits = [
+            hit
+            for hit in vector_hits
+            if _is_website_hit(hit) and str(hit.get("vector_id") or "") not in seen
+        ][: settings.RAG_TOP_K]
+        if website_hits:
+            logger.info("Adding %s university web pages to fill gaps", len(website_hits))
+            relevant = relevant + website_hits
 
     if _confident(relevant, question):
         return _ranked(relevant, question)[: settings.RAG_TOP_K], "vector"
@@ -162,6 +172,14 @@ def _is_junk_chunk(text: str) -> bool:
     if content.count(".") >= 20 and len(re.findall(r"\d+", content)) >= 8:
         return True
     return False
+
+
+def _is_website_hit(hit: dict[str, Any]) -> bool:
+    meta = hit.get("metadata") or {}
+    kind = (meta.get("source_type") or meta.get("file_type") or "").lower()
+    if kind in {"website", "html"}:
+        return True
+    return bool((meta.get("source_url") or "").strip())
 
 
 def _hit_blob(hit: dict[str, Any]) -> str:
