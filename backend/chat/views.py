@@ -281,8 +281,8 @@ def chat_ask_stream(request):
             "question": request.query_params.get("question", ""),
             "session_id": request.query_params.get("session_id") or None,
         }
-    logger.info("Chat stream started (%s)", request.method)
     session, question, history, replay = _begin_turn(request, payload)
+    logger.info("Chat stream started (%s) question=%s", request.method, (question or "")[:160])
 
     def events():
         yield _sse({"type": "meta", "session_id": str(session.id), "status": "retrieving"})

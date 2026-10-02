@@ -24,6 +24,23 @@ from .vectorstore import VectorStoreError
 logger = logging.getLogger("rag")
 
 
+def _clip_log(text: str, limit: int = 160) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 1] + "…"
+
+
+def _hit_log(hits: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for hit in (hits or [])[:4]:
+        meta = hit.get("metadata") or {}
+        title = _clip_log(str(meta.get("document_title") or "untitled"), 50)
+        score = float(hit.get("relevance_score") or 0)
+        parts.append(f"{title}:{score:.2f}")
+    return "; ".join(parts) or "(none)"
+
+
 def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -> dict[str, Any]:
     question = (question or "").strip()
     if not question:
@@ -51,13 +68,19 @@ def prepare_answer(question: str, history: list[dict[str, str]] | None = None) -
     try:
         relevant, method = retrieve_policy_chunks(question, history or [])
     except (EmbeddingError, VectorStoreError, OSError):
-        logger.exception("Embedding failed while retrieving policy chunks")
+        logger.exception("Not found reason=embedding_failed question=%s", _clip_log(question))
         return _ready(NOT_FOUND_MESSAGE, found=False)
     if not relevant:
-        logger.info("No relevant policy chunks found for question")
+        logger.info("Not found reason=no_chunks question=%s", _clip_log(question))
         return _ready(NOT_FOUND_MESSAGE, found=False)
 
-    logger.info("Answering with %s retrieval (%s chunks)", method, len(relevant))
+    logger.info(
+        "Answering with %s retrieval (%s chunks) question=%s hits=%s",
+        method,
+        len(relevant),
+        _clip_log(question),
+        _hit_log(relevant),
+    )
     context = _build_context(relevant)
     offer = _last_offered_question(history or [])
     if _is_short_continue(original) and offer:
@@ -102,6 +125,7 @@ def answer_question(question: str, history: list[dict[str, str]] | None = None) 
     answer = _ensure_follow_up(follow_topic, _finalize_answer(answer, prepared))
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
+    _log_answer_outcome(prepared, found)
     return {
         "answer": answer,
         "sources": sources,
@@ -142,10 +166,12 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
     )
     found = NOT_FOUND_MESSAGE.lower() not in answer.lower()
     sources = prepared["sources"] if found else []
+    _log_answer_outcome(prepared, found)
     logger.info(
-        "Stream finished: raw=%s chars, answer=%s chars, think_tag=%s",
+        "Stream finished: raw=%s chars, answer=%s chars, found=%s think_tag=%s",
         len(raw),
         len(answer),
+        found,
         "yes" if re.search(r"</think>|<think>", raw, flags=re.I) else "no",
     )
     yield {
@@ -154,6 +180,24 @@ def stream_answer_events(question: str, history: list[dict[str, str]] | None = N
         "sources": sources,
         "found": found,
     }
+
+
+def _log_answer_outcome(prepared: dict[str, Any], found: bool) -> None:
+    question = _clip_log(str(prepared.get("question") or ""))
+    retrieval = prepared.get("retrieval") or "none"
+    hits = prepared.get("hits") or []
+    if found:
+        logger.info("Answer found retrieval=%s question=%s", retrieval, question)
+        return
+    if hits:
+        logger.info(
+            "Not found reason=model_said_missing question=%s retrieval=%s hits=%s",
+            question,
+            retrieval,
+            _hit_log(hits),
+        )
+        return
+    logger.info("Not found reason=empty_answer question=%s retrieval=%s", question, retrieval)
 
 
 def _ready(answer: str, found: bool) -> dict[str, Any]:
